@@ -10,3 +10,9 @@ dependency_overrides:
     path: ../../ggsuite/gg_args
   gg_log:
     path: ../../ggsuite/gg_log
+  gg_console_colors:
+    path: ../../ggsuite/gg_console_colors
+  gg_process:
+    path: ../../ggsuite/gg_process
+  gg_capture_print:
+    path: ../../ggsuite/gg_capture_print
