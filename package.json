@@ -1,7 +1,7 @@
 {
-  "name": "@tssuite/gg-bridge-dart-typescript",
-  "version": "1.0.1",
-  "description": "Bridge exposing a Dart package as a JavaScript and WebAssembly module with hand-typed TypeScript declarations.",
+  "name": "@tssuite/gg-js",
+  "version": "1.0.2",
+  "description": "Compile ggsuite/gg to webassembly and provide it via NPM",
   "keywords": [
     "dart",
     "wasm",
@@ -71,11 +71,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tssuite/gg-bridge-dart-typescript.git"
+    "url": "git+https://github.com/tssuite/gg-js.git"
   },
-  "homepage": "https://github.com/tssuite/gg-bridge-dart-typescript#readme",
+  "homepage": "https://github.com/tssuite/gg-js#readme",
   "bugs": {
-    "url": "https://github.com/tssuite/gg-bridge-dart-typescript/issues"
+    "url": "https://github.com/tssuite/gg-js/issues"
   },
   "publishConfig": {
     "access": "public"

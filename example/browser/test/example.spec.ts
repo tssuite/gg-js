@@ -14,8 +14,8 @@ test.describe('browser demo page', () => {
   test('renders title and heading', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page).toHaveTitle('gg_bridge_dart_typescript — browser demo');
-    await expect(page.locator('h1')).toHaveText('gg_bridge_dart_typescript');
+    await expect(page).toHaveTitle('gg_js — browser demo');
+    await expect(page.locator('h1')).toHaveText('gg_js');
   });
 
   test('renders all five example outputs', async ({ page }) => {

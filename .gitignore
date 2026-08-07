@@ -19,5 +19,8 @@ playwright-report/
 # OS / IDE
 .DS_Store
 *.log
-.gg
-!.gg/.gg.json
+.gg/*
+!.gg/gg.json
+.gg/gg-publish.json
+.gg/pubspec_overrides_backup.yaml
+.gg/pnpm_workspace_backup.yaml

@@ -1,4 +1,4 @@
-# gg_bridge_dart_typescript
+# gg_js
 
 Bridge exposing a Dart package as a WebAssembly module — published to npm,
 consumed from Node or the browser, with hand-typed TypeScript declarations.
@@ -6,7 +6,7 @@ consumed from Node or the browser, with hand-typed TypeScript declarations.
 These three projects demonstrate a complete dart - bridge - typescript chain:
 
 1. https://github.com/tssuite/gg_bridge_dart_side
-2. https://github.com/tssuite/gg_bridge_dart_typescript
+2. https://github.com/tssuite/gg_js
 3. https://github.com/tssuite/gg_bridge_typescript_side
 
 This is intentionally a **single hybrid project**: one `pubspec.yaml` and one
@@ -22,7 +22,7 @@ before each build.
 ├── package.json            # npm package
 ├── build.dart              # compiles lib/src/main.dart → JS + Wasm
 ├── lib/                    # Dart sources
-│   ├── gg_bridge_dart_typescript.dart
+│   ├── gg_js.dart
 │   └── src/
 │       ├── main.dart           # @JSExport bridge to JS
 │       └── foo.dart
