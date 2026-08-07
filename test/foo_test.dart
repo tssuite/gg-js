@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by terms that can be
 // found in the LICENSE file in the root of this package.
-import 'package:gg_bridge_dart_typescript/gg_bridge_dart_typescript.dart';
+import 'package:gg_js/gg_js.dart';
 import 'package:test/test.dart';
 
 void main() {

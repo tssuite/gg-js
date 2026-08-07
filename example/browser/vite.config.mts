@@ -22,6 +22,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['gg-bridge-dart-typescript'],
+    exclude: ['gg-js'],
   },
 });

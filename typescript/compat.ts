@@ -103,7 +103,7 @@ export function assertWasmGcSupported(): void {
   if (result.supported) return;
 
   const message = [
-    'gg-bridge-dart-typescript requires a WebAssembly runtime with the ' +
+    'gg-js requires a WebAssembly runtime with the ' +
       'GC proposal and the JS-string builtins, but the current environment ' +
       'does not support them.',
     '',

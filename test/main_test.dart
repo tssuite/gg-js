@@ -23,7 +23,7 @@ import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
-import 'package:gg_bridge_dart_typescript/src/main.dart';
+import 'package:gg_js/src/main.dart';
 import 'package:test/test.dart';
 
 void main() {

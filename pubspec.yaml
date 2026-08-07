@@ -1,9 +1,9 @@
-name: gg_bridge_dart_typescript
+name: gg_js
 description: >
   Bridge exposing a Dart package as a JavaScript and WebAssembly
   module with hand-typed TypeScript declarations.
 version: 1.0.1
-repository: https://github.com/tssuite/gg_bridge_dart_typescript.git
+repository: https://github.com/tssuite/gg_js.git
 publish_to: none
 
 environment:

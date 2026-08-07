@@ -1,6 +1,6 @@
 # Architecture
 
-This document captures the design of `gg_bridge_dart_typescript` — what it
+This document captures the design of `gg_js` — what it
 is, why each layer exists, and the trade-offs that were made. It complements
 [README.md](README.md) (which is task-oriented: install, build, run).
 
