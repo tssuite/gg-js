@@ -19,5 +19,5 @@ playwright-report/
 # OS / IDE
 .DS_Store
 *.log
-.gg
-!.gg/.gg.json
+.gg/*
+!.gg/gg.json
