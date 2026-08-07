@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "example-browser",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "example:browser"],
+      "port": 5174
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+# Dart
+.dart_tool/
+build/
+*.dart_tool
+
+# Node
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+typescript/generated/
+coverage/
+
+# Playwright
+test-results/
+playwright-report/
+
+# OS / IDE
+.DS_Store
+*.log
+.gg
+!.gg/.gg.json

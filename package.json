@@ -1,0 +1,86 @@
+{
+  "name": "@tssuite/gg-bridge-dart-typescript",
+  "version": "1.0.1",
+  "description": "Bridge exposing a Dart package as a JavaScript and WebAssembly module with hand-typed TypeScript declarations.",
+  "keywords": [
+    "dart",
+    "wasm",
+    "webassembly",
+    "bridge",
+    "interop",
+    "typescript"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./dist/index.browser.js",
+      "node": "./dist/index.node.js",
+      "default": "./dist/index.js"
+    },
+    "./wasm": "./dist/bridge-wasm.wasm"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "sync-version": "dart run scripts/sync_version.dart",
+    "build:dart": "dart run build.dart",
+    "build:dart:debug": "dart run build.dart --debug",
+    "build:ts": "tsc -p tsconfig.json && vite build && cp typescript/generated/bridge-wasm.wasm dist/bridge-wasm.wasm",
+    "build": "pnpm run clean && pnpm run sync-version && pnpm run build:dart && pnpm run build:ts",
+    "clean": "rm -rf dist typescript/generated && mkdir -p typescript/generated",
+    "test:dart": "dart test",
+    "test:vitest": "vitest run --coverage",
+    "test:node": "vitest run --project=node",
+    "test:browser": "vitest run --project=browser",
+    "test:coverage": "vitest run --coverage",
+    "test:example": "playwright test --config example/browser/playwright.config.ts",
+    "test": "pnpm run test:dart && pnpm run test:vitest && pnpm run test:browser && pnpm run test:node && pnpm run test:example && pnpm run lint",
+    "lint": "eslint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "example:browser": "vite --config example/browser/vite.config.mts",
+    "example:node": "node example/node-cli/index.mjs",
+    "prepublishOnly": "pnpm run build && pnpm run test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^25.9.2",
+    "@vitest/browser": "^4.1.8",
+    "@vitest/browser-playwright": "^4.1.8",
+    "@vitest/coverage-v8": "^4.1.8",
+    "eslint": "^10.4.1",
+    "eslint-plugin-jsdoc": "^63.0.2",
+    "eslint-plugin-tsdoc": "^0.5.2",
+    "globals": "^17.6.0",
+    "jsdoc": "^4.0.5",
+    "playwright": "^1.60.0",
+    "prettier": "^3.8.4",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.0",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tssuite/gg-bridge-dart-typescript.git"
+  },
+  "homepage": "https://github.com/tssuite/gg-bridge-dart-typescript#readme",
+  "bugs": {
+    "url": "https://github.com/tssuite/gg-bridge-dart-typescript/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "author": "Dr. Gabriel Gatzsche",
+  "packageManager": "pnpm@11.5.3+sha512.7ac1c919341c213a34dc0d02afb7143c5c26ac26ee8c4782deea821b8ac64d2134a081fd8941dae6e29bbb48f58dfc2b7fbceeccc07cb2f09d219d342a4969ed"
+}

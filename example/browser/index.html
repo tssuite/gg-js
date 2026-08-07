@@ -1,0 +1,61 @@
+<!--
+  @license
+  Copyright (c) 2026 ggsuite
+
+  Use of this source code is governed by terms that can be
+  found in the LICENSE file in the root of this package.
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>gg_bridge_dart_typescript — browser demo</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem;
+        line-height: 1.4;
+      }
+      h1 {
+        margin-top: 0;
+      }
+      section {
+        margin-bottom: 1.5rem;
+      }
+      pre {
+        background: #f4f4f4;
+        padding: 0.75rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>gg_bridge_dart_typescript</h1>
+    <p>This page exercises all four examples in the browser.</p>
+
+    <section>
+      <h2>1. Function call</h2>
+      <pre id="out-function">…</pre>
+    </section>
+    <section>
+      <h2>2. Class with async methods</h2>
+      <pre id="out-class">…</pre>
+    </section>
+    <section>
+      <h2>3. JSON exchange</h2>
+      <pre id="out-json">…</pre>
+    </section>
+    <section>
+      <h2>4. JS callback into Dart</h2>
+      <pre id="out-callback">…</pre>
+    </section>
+    <section>
+      <h2>5. Byte array exchange</h2>
+      <pre id="out-bytes">…</pre>
+    </section>
+
+    <script
+      type="module"
+      src="./main.ts"></script>
+  </body>
+</html>
