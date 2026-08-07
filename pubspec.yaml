@@ -15,6 +15,6 @@ dependencies:
     git: https://github.com/tssuite/gg_bridge_dart_side
     version: ^1.0.3
 dev_dependencies:
-  gg_console_colors: ^2.1.5
+  gg_console_colors: ^2.3.0
   lints: ^6.1.0
-  test: ^1.31.1
+  test: ^1.31.2
