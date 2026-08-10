@@ -152,6 +152,12 @@ implementation this package ships. Three decisions in it are not obvious:
 - **A missing executable is a failed run, not an exception.** gg reads the
   stderr of a command that failed; `ENOENT` is reported as exit code 127
   with the message on stderr, the way a shell would.
+- **Batch wrappers get a shell.** Node refuses to spawn a `.bat` or
+  `.cmd` without one since the fix for CVE-2024-27980, and gg reaches for
+  `pana.bat` and `flutter.bat` on Windows without asking for a shell — a
+  native Dart build does not need one. `needsShell` decides that here,
+  where the platform is known, instead of spreading a Node detail through
+  the gg suite.
 - **`start` only detaches when asked.** gg uses `Process.start` for two
   different things: reading a program's output, and launching an editor
   that should outlive gg. Only the second gets a detached child.
@@ -231,12 +237,10 @@ of a `Map` and watch it find a `pubspec.yaml` that exists nowhere on disk.
 
 ## 12. Future work
 
-- **A Windows CI job.** The path layer is fine — dart2wasm asks
-  `process.platform` for `Uri._isWindows`, so a Windows Node makes
-  `package:path` pick the windows style, which was measured. What has
-  never run there is everything else: the blocking stdin read against a
-  console handle, `cmd.exe` quoting, and the test fixtures, several of
-  which shell out to `sh`, `cat` and `sleep`.
+- **Interactive prompts on Windows.** The blocking read the prompts use
+  goes through `fs.readSync` on file descriptor 0, and a Windows console
+  handle does not answer that the way a pty does. The CI job will say;
+  until it does, treat the prompts as posix-only.
 - **An RxJS entry point** over the callback protocol, for consumers who
   would rather compose gg's output as an `Observable` than register a
   callback. The protocol is deliberately callback-shaped: an `Observable`

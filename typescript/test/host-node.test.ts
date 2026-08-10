@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 import {
   createNodeHost,
+  needsShell,
   nodePlatformToDart,
   readLineFrom,
 } from '../host-node.js';
@@ -287,6 +288,8 @@ describe('createNodeHost()', () => {
     });
 
     test('runs through a shell when asked', async () => {
+      // `echo` is a builtin of both sh and cmd.exe, so this is the one
+      // place a bare shell word is portable.
       const result = await host.process.run('echo hello-shell', [], {
         ...options,
         runInShell: true,
@@ -397,8 +400,12 @@ describe('createNodeHost()', () => {
 
     test('delivers output in more than one chunk', async () => {
       const started = await host.process.start(
-        'sh',
-        ['-c', 'echo one; sleep 0.2; echo two'],
+        process.execPath,
+        [
+          '-e',
+          "process.stdout.write('one\\n');" +
+            "setTimeout(() => process.stdout.write('two\\n'), 200)",
+        ],
         options,
       );
 
@@ -408,7 +415,11 @@ describe('createNodeHost()', () => {
     });
 
     test('carries stdin into the program', async () => {
-      const started = await host.process.start('cat', [], options);
+      const started = await host.process.start(
+        process.execPath,
+        ['-e', 'process.stdin.pipe(process.stdout)'],
+        options,
+      );
       const done = collect(started);
 
       started.writeStdin('through stdin');
@@ -418,7 +429,11 @@ describe('createNodeHost()', () => {
     });
 
     test('kills a running program', async () => {
-      const started = await host.process.start('sleep', ['30'], options);
+      const started = await host.process.start(
+        process.execPath,
+        ['-e', 'setTimeout(() => {}, 30000)'],
+        options,
+      );
       const done = collect(started);
 
       expect(started.kill('SIGTERM')).toBe(true);
@@ -426,7 +441,11 @@ describe('createNodeHost()', () => {
     });
 
     test('falls back to SIGTERM for an unknown signal', async () => {
-      const started = await host.process.start('sleep', ['30'], options);
+      const started = await host.process.start(
+        process.execPath,
+        ['-e', 'setTimeout(() => {}, 30000)'],
+        options,
+      );
       const done = collect(started);
 
       expect(started.kill('ProcessSignal.sigwhatever')).toBe(true);
@@ -441,6 +460,39 @@ describe('createNodeHost()', () => {
       );
 
       expect((await collect(started)).code).toBe(127);
+    });
+  });
+
+  // ###########################################################################
+  describe('needsShell()', () => {
+    test('honours what gg asked for', () => {
+      expect(needsShell('git', true, 'linux')).toBe(true);
+      expect(needsShell('git', true, 'win32')).toBe(true);
+    });
+
+    test('leaves a plain command alone', () => {
+      expect(needsShell('git', false, 'linux')).toBe(false);
+      expect(needsShell('git', false, 'win32')).toBe(false);
+    });
+
+    test('forces a shell for batch files on Windows', () => {
+      // Node throws EINVAL for a .bat without a shell (CVE-2024-27980),
+      // and gg calls pana.bat and flutter.bat without asking for one.
+      expect(needsShell('pana.bat', false, 'win32')).toBe(true);
+      expect(needsShell('C:\\tools\\flutter.CMD', false, 'win32')).toBe(true);
+    });
+
+    test('leaves batch files alone everywhere else', () => {
+      expect(needsShell('pana.bat', false, 'linux')).toBe(false);
+    });
+
+    test('does not mistake something else for a batch file', () => {
+      expect(needsShell('battery', false, 'win32')).toBe(false);
+      expect(needsShell('a.bat.exe', false, 'win32')).toBe(false);
+    });
+
+    test('decides for this platform by default', () => {
+      expect(needsShell('pana.bat', false)).toBe(process.platform === 'win32');
     });
   });
 

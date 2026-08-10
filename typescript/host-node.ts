@@ -205,7 +205,7 @@ export function createNodeHost(options: NodeHostOptions = {}): GgHost {
       const result = spawnSync(executable, args, {
         cwd: absolute(runOptions.workingDirectory ?? cwd),
         env: spawnEnv(runOptions),
-        shell: runOptions.runInShell,
+        shell: needsShell(executable, runOptions.runInShell),
         encoding: 'utf8',
         maxBuffer: 64 * 1024 * 1024,
       });
@@ -239,7 +239,7 @@ export function createNodeHost(options: NodeHostOptions = {}): GgHost {
       const child = spawn(executable, args, {
         cwd: absolute(runOptions.workingDirectory ?? cwd),
         env: spawnEnv(runOptions),
-        shell: runOptions.runInShell,
+        shell: needsShell(executable, runOptions.runInShell),
         // Detached means »outlive gg«: `gg do code` opens the editor that
         // way and never reads anything back.
         detached: runOptions.detached,
@@ -299,6 +299,31 @@ export function createNodeHost(options: NodeHostOptions = {}): GgHost {
     console: consoleHost,
     prompts,
   };
+}
+
+/**
+ * Whether a command has to go through a shell.
+ *
+ * Node refuses to spawn a `.bat` or `.cmd` file without one — the fix for
+ * CVE-2024-27980 — and throws `EINVAL` instead. gg reaches for those
+ * wrappers on Windows (`pana.bat`, `flutter.bat`) without asking for a
+ * shell, because a native Dart build does not need one. Deciding it here
+ * keeps that knowledge in the host, where the platform is known, rather
+ * than spreading a Node detail through the gg suite.
+ * @param executable - The program gg wants to run.
+ * @param requested - Whether gg asked for a shell itself.
+ * @param platform - The platform to decide for. Defaults to this one;
+ *   passing it makes both answers reachable from any host.
+ * @returns Whether to hand the command to a shell.
+ */
+export function needsShell(
+  executable: string,
+  requested: boolean,
+  platform: string = process.platform,
+): boolean {
+  if (requested) return true;
+  if (platform !== 'win32') return false;
+  return /\.(bat|cmd)$/i.test(executable);
 }
 
 /**

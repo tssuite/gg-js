@@ -8,7 +8,16 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Windows is where the host abstraction is most likely to be wrong:
+    # `package:path` switches to the windows style there (dart2wasm derives
+    # that from `process.platform`), and the Node host has to agree with it.
+    # Nothing else in the suite exercises that combination.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4

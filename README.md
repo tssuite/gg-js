@@ -123,9 +123,11 @@ That is how gg is tested, and how you would sandbox it.
 - **Node only, for now.** The module loads in a browser, but
   `package:path` derives its path style from the page URL and would treat
   gg's paths as URLs.
-- **Windows is untested.** Nothing is known to be broken — the path
-  handling picks the Windows style correctly — but no CI has run there,
-  so treat it as unproven rather than supported.
+- **Windows is new.** CI runs there now, and the known Windows-specific
+  traps are handled: `package:path` picks the Windows style, and batch
+  wrappers like `pana.bat` are given a shell, which Node requires. Reading
+  a line from a Windows console handle synchronously is the part still
+  unproven, so the interactive prompts may not work there yet.
 
 ## Requirements
 

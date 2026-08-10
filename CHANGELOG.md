@@ -26,6 +26,11 @@
   native arrow-key list — `package:interact` needs `dart:ffi`. Pass
   `prompts: false` to leave gg without them.
 
+- CI runs on Windows as well as Linux. The build scripts no longer reach
+  for `rm`, `cp` and `chmod`, the process fixtures no longer for `sh`,
+  `cat` and `sleep`, and batch wrappers are given the shell Node requires
+  for them.
+
 ### Changed
 
 - The bridge is now `globalThis.ggBridge` with two methods, `setHost` and
