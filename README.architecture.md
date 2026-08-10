@@ -122,8 +122,9 @@ way `ggLog` output goes.
 before it does anything else, twice:
 
 - `Style.platform` compares it against a `file:` URI to decide between
-  posix and windows separators. It is a `static final`, so the first read
-  wins for the lifetime of the module.
+  posix and windows separators — together with `process.platform`, which
+  dart2wasm consults for `Uri._isWindows`. It is a `static final`, so the
+  first read wins for the lifetime of the module.
 - `path.current`, which `p.absolute()` resolves against, is `Uri.base`
   turned back into a file path.
 
@@ -230,8 +231,12 @@ of a `Map` and watch it find a `pubspec.yaml` that exists nowhere on disk.
 
 ## 12. Future work
 
-- **Windows,** which needs `package:path` to pick the windows style — the
-  `Uri.base` trick of §5 always yields posix.
+- **A Windows CI job.** The path layer is fine — dart2wasm asks
+  `process.platform` for `Uri._isWindows`, so a Windows Node makes
+  `package:path` pick the windows style, which was measured. What has
+  never run there is everything else: the blocking stdin read against a
+  console handle, `cmd.exe` quoting, and the test fixtures, several of
+  which shell out to `sh`, `cat` and `sleep`.
 - **An RxJS entry point** over the callback protocol, for consumers who
   would rather compose gg's output as an `Observable` than register a
   callback. The protocol is deliberately callback-shaped: an `Observable`

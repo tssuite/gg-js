@@ -123,6 +123,9 @@ That is how gg is tested, and how you would sandbox it.
 - **Node only, for now.** The module loads in a browser, but
   `package:path` derives its path style from the page URL and would treat
   gg's paths as URLs.
+- **Windows is untested.** Nothing is known to be broken — the path
+  handling picks the Windows style correctly — but no CI has run there,
+  so treat it as unproven rather than supported.
 
 ## Requirements
 
