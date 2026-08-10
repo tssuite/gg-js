@@ -32,6 +32,12 @@ export {
   type NodeHostOptions,
 } from './host-node.js';
 
+export {
+  createNodePrompts,
+  UnansweredPromptError,
+  type NodePromptOptions,
+} from './prompts-node.js';
+
 // -----------------------------------------------------------------------------
 // The bridge surface. Hand-written, and matched on the Dart side by
 // `lib/src/main.dart`. `tsc --emitDeclarationOnly` turns it into

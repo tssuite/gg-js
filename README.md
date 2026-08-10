@@ -113,11 +113,13 @@ That is how gg is tested, and how you would sandbox it.
 
 ## Limitations
 
-- **Interactive prompts are unavailable.** The selection lists and message
-  editors of the native gg are drawn by a library that needs `dart:ffi`,
-  which WebAssembly does not have. gg refuses those commands with a message
-  naming the flag to pass instead, rather than hanging. Supply
-  `host.prompts` to draw them yourself.
+- **Interactive prompts look different.** The native gg draws its
+  selection lists with arrow keys and hands you a pre-filled editable
+  buffer for commit and merge messages; that library needs `dart:ffi`,
+  which WebAssembly does not have. Here you get a numbered list and a
+  plain line of input, where an empty answer keeps what gg proposed. Same
+  questions, same answers. Pass `prompts: false` to `createNodeHost` to
+  turn them off, and gg refuses the interactive commands instead.
 - **Node only, for now.** The module loads in a browser, but
   `package:path` derives its path style from the page URL and would treat
   gg's paths as URLs.

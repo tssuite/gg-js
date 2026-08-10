@@ -16,6 +16,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { createNodePrompts } from './prompts-node.js';
 import { setUriBase } from './uri-base.js';
 import {
   EntityType,
@@ -26,6 +27,7 @@ import {
   type PlatformHost,
   type ProcessHost,
   type ProcessOutcome,
+  type PromptHost,
   type RunOptions,
   type StartedProcess,
 } from './host.js';
@@ -52,6 +54,15 @@ export interface NodeHostOptions {
    * from a stdin that belongs to the surrounding program.
    */
   stdinFd?: number;
+  /**
+   * The prompts gg asks its interactive questions with.
+   *
+   * Defaults to {@link createNodePrompts}. Pass `false` to leave gg
+   * without any: it then refuses the interactive commands with a message
+   * naming the flag to pass instead. gg guards every prompt behind a
+   * terminal check either way, so a piped run never blocks.
+   */
+  prompts?: PromptHost | false;
 }
 
 /**
@@ -272,11 +283,21 @@ export function createNodeHost(options: NodeHostOptions = {}): GgHost {
     /* v8 ignore stop */
   };
 
+  const prompts =
+    options.prompts === false
+      ? undefined
+      : (options.prompts ??
+        createNodePrompts({
+          write: writeStdout,
+          readLine: () => readLineFrom(options.stdinFd),
+        }));
+
   return {
     fs: fileSystem,
     process: processHost,
     platform,
     console: consoleHost,
+    prompts,
   };
 }
 

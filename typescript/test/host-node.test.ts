@@ -549,8 +549,10 @@ describe('createNodeHost()', () => {
       }
     });
 
-    test('ships no prompts — a Node host cannot draw them', () => {
-      expect(host.prompts).toBeUndefined();
+    test('ships prompts a Node terminal can answer', () => {
+      // Covered in detail by prompts-node.test.ts; here only that the
+      // host carries them at all.
+      expect(host.prompts).toBeDefined();
     });
   });
 });

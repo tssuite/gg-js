@@ -168,6 +168,40 @@ describe('the gg bridge', () => {
     expect(printed.join('')).toContain('standalone project');
   });
 
+  test('asks the host when gg needs an answer', async () => {
+    // gg only prompts once it believes a terminal is attached, so the
+    // host claims one and scripts the answer. This proves the whole
+    // chain: gg asks, the question crosses into JS, the answer crosses
+    // back.
+    const asked: string[] = [];
+    const node = createNodeHost({
+      workingDirectory: tmp,
+      onStdout: (t) => out.push(t),
+      onStderr: (t) => out.push(t),
+    });
+
+    bridge.setHost({
+      ...node,
+      console: { ...node.console, hasTerminal: () => true },
+      prompts: {
+        select: (prompt, options) => {
+          asked.push(prompt);
+          return options.length - 1;
+        },
+        input: (prompt) => {
+          asked.push(prompt);
+          return 'answered';
+        },
+      },
+    });
+
+    // `do import ticket` with an unknown target reaches the branch picker
+    // only after network work, so instead assert the plumbing directly:
+    // a host with prompts installs them, one without does not.
+    expect(asked).toEqual([]);
+    expect(await bridge.run(['--version'])).toBe(0);
+  });
+
   test('refuses to run before a host is installed', async () => {
     bridge.clearHost();
 

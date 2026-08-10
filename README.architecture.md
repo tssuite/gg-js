@@ -51,6 +51,7 @@ lib/src/js_host.dart  ← JS object shapes ⇄ gg's GgHost
 typescript/
   host.ts             ← the host contract, as TypeScript types
   host-node.ts        ← the host, implemented on node:fs / node:child_process
+  prompts-node.ts     ← the questions gg asks, asked from a Node terminal
   uri-base.ts         ← globalThis.location for a module that has none
   runtime.ts          ← loads and instantiates the .wasm
   compat.ts           ← Wasm-GC feature probe
@@ -153,6 +154,13 @@ implementation this package ships. Three decisions in it are not obvious:
 - **`start` only detaches when asked.** gg uses `Process.start` for two
   different things: reading a program's output, and launching an editor
   that should outlive gg. Only the second gets a detached child.
+- **Prompts are synchronous, and that is safe.** gg reaches its prompts
+  from code that cannot await, so `prompts-node.ts` blocks on the file
+  descriptor until the user hits return. Every prompt in gg sits behind
+  `throwWhenNotATerminal`, so a piped run never gets there. Where the
+  native gg draws an arrow-key list and a pre-filled buffer, this draws a
+  numbered list and a line of input — the same questions, fewer
+  keystrokes saved.
 - **A started process buffers until Dart listens.** `spawn` returns and
   Dart attaches its listeners one microtask later — a fast program can be
   done by then. `NodeStartedProcess` therefore collects output from the
@@ -224,8 +232,6 @@ of a `Map` and watch it find a `pubspec.yaml` that exists nowhere on disk.
 
 - **Windows,** which needs `package:path` to pick the windows style — the
   `Uri.base` trick of §5 always yields posix.
-- **Prompts from Node,** filling `host.prompts` with a real readline
-  implementation so the interactive commands work again.
 - **An RxJS entry point** over the callback protocol, for consumers who
   would rather compose gg's output as an `Observable` than register a
   callback. The protocol is deliberately callback-shaped: an `Observable`

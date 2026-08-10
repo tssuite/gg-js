@@ -21,6 +21,11 @@
   line by line and can type into a program's stdin. Without it
   `gg one can commit` read a passing suite as a failure.
 
+- `createNodeHost` supplies the interactive prompts, so the commands that
+  ask questions work. A numbered list and a line of input rather than the
+  native arrow-key list — `package:interact` needs `dart:ffi`. Pass
+  `prompts: false` to leave gg without them.
+
 ### Changed
 
 - The bridge is now `globalThis.ggBridge` with two methods, `setHost` and
