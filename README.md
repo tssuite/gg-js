@@ -111,9 +111,10 @@ That is how gg is tested, and how you would sandbox it.
 ## Limitations
 
 - **`Process.start` does not stream.** A started program is run to
-  completion and its output replayed, so commands that type into another
-  program's stdin — the interactive half of `gg one do publish` — do not
-  work here. Everything that only reads a program's output does.
+  completion and its output replayed. `gg one can commit` therefore
+  reports failing tests even when they pass — `gg do commit`, `can push`
+  and `do publish` are affected with it. Reading, listing and inspecting
+  work; the commit and publish path does not yet.
 - **Interactive prompts are unavailable.** The selection lists and message
   editors of the native gg are drawn by a library that needs `dart:ffi`,
   which WebAssembly does not have. gg refuses those commands with a message

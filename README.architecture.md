@@ -216,9 +216,12 @@ of a `Map` and watch it find a `pubspec.yaml` that exists nowhere on disk.
 
 ## 12. Future work
 
-- **Streaming `Process.start`,** so the interactive publish flow works.
-- **`package:http` through the host,** so the pub.dev, npm and GitHub calls
-  of the publish and import flows are covered.
+- **Streaming `Process.start`.** Not cosmetic: `gg_test` parses
+  `dart test`'s output per chunk, and the replay model hands it one chunk
+  for the whole run, which it reads as a failure. `gg one can commit`
+  therefore reports failing tests through this package even when they
+  pass. `gg_publish` additionally types the publish confirmation into the
+  started process' stdin, which run-to-completion cannot do at all.
 - **Windows,** which needs `package:path` to pick the windows style — the
   `Uri.base` trick of §5 always yields posix.
 - **Prompts from Node,** filling `host.prompts` with a real readline
