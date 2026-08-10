@@ -182,17 +182,26 @@ export interface ConsoleHost {
  * naming the flag to pass instead, rather than hanging on input nobody can
  * give. The prompts of a native gg are drawn by `package:interact`, which
  * needs `dart:ffi` and is therefore absent from a Wasm build.
+ *
+ * Unlike {@link FileSystemHost}, these are asynchronous: gg awaits every
+ * prompt, so a host is free to use whatever its platform offers for
+ * reading a line — `readline` under Node, which works on Windows too, or
+ * a dialog somewhere else.
  */
 export interface PromptHost {
   /** Lets the user pick one of `options` and returns the index picked. */
-  select(prompt: string, options: string[], initialIndex: number): number;
+  select(
+    prompt: string,
+    options: string[],
+    initialIndex: number,
+  ): Promise<number>;
   /** Lets the user edit a line of text. */
   input(
     prompt: string,
     defaultValue: string,
     initialText: string,
     asMessageEditor: boolean,
-  ): string;
+  ): Promise<string>;
 }
 
 /** Everything gg needs from the world around it. */

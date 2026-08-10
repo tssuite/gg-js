@@ -161,13 +161,14 @@ implementation this package ships. Three decisions in it are not obvious:
 - **`start` only detaches when asked.** gg uses `Process.start` for two
   different things: reading a program's output, and launching an editor
   that should outlive gg. Only the second gets a detached child.
-- **Prompts are synchronous, and that is safe.** gg reaches its prompts
-  from code that cannot await, so `prompts-node.ts` blocks on the file
-  descriptor until the user hits return. Every prompt in gg sits behind
-  `throwWhenNotATerminal`, so a piped run never gets there. Where the
-  native gg draws an arrow-key list and a pre-filled buffer, this draws a
-  numbered list and a line of input — the same questions, fewer
-  keystrokes saved.
+- **Prompts are asynchronous; the file system is not.** The file
+  callbacks have to be synchronous — `dart:io`'s `…Sync` APIs cannot
+  await — and a prompt does not, because every caller in gg already
+  awaits it. So `prompts-node.ts` reads through `readline` instead of
+  blocking on a file descriptor, which is what makes it work on Windows.
+  Where the native gg draws an arrow-key list and a pre-filled buffer,
+  this draws a numbered list and a line of input — the same questions,
+  fewer keystrokes saved.
 - **A started process buffers until Dart listens.** `spawn` returns and
   Dart attaches its listeners one microtask later — a fast program can be
   done by then. `NodeStartedProcess` therefore collects output from the
@@ -237,10 +238,13 @@ of a `Map` and watch it find a `pubspec.yaml` that exists nowhere on disk.
 
 ## 12. Future work
 
-- **Interactive prompts on Windows.** The blocking read the prompts use
-  goes through `fs.readSync` on file descriptor 0, and a Windows console
-  handle does not answer that the way a pty does. The CI job will say;
-  until it does, treat the prompts as posix-only.
+- **`stdin.readLineSync()` on Windows.** The prompts no longer need a
+  blocking read, but gg's interactive publish flow calls `dart:io`'s
+  `stdin.readLineSync()` directly, and that one cannot be anything but
+  synchronous. It still goes through `fs.readSync` on descriptor 0, which
+  a Windows console handle may not answer.
+- **An arrow-key selector.** The asynchronous contract leaves room for a
+  real TUI prompt on the JS side without touching the contract again.
 - **An RxJS entry point** over the callback protocol, for consumers who
   would rather compose gg's output as an `Observable` than register a
   callback. The protocol is deliberately callback-shaped: an `Observable`

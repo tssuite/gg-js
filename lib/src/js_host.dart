@@ -214,14 +214,14 @@ extension type GgConsoleJs._(JSObject _) implements JSObject {
 /// The optional interactive prompts of the host.
 extension type GgPromptsJs._(JSObject _) implements JSObject {
   /// Lets the user pick one of `options` and returns the index.
-  external int select(
+  external JSPromise<JSNumber> select(
     String prompt,
     JSArray<JSString> options,
     int initialIndex,
   );
 
   /// Lets the user edit a line of text.
-  external String input(
+  external JSPromise<JSString> input(
     String prompt,
     String defaultValue,
     String initialText,
@@ -388,10 +388,16 @@ GgConsoleCallbacks _console(GgConsoleJs console) => GgConsoleCallbacks(
 
 // .............................................................................
 GgPromptCallbacks _prompts(GgPromptsJs prompts) => GgPromptCallbacks(
-  select: (prompt, options, initialIndex) =>
-      prompts.select(prompt, _stringArray(options), initialIndex),
-  input: (prompt, defaultValue, initialText, asMessageEditor) =>
-      prompts.input(prompt, defaultValue, initialText, asMessageEditor),
+  select: (prompt, options, initialIndex) async =>
+      (await prompts
+              .select(prompt, _stringArray(options), initialIndex)
+              .toDart)
+          .toDartInt,
+  input: (prompt, defaultValue, initialText, asMessageEditor) async =>
+      (await prompts
+              .input(prompt, defaultValue, initialText, asMessageEditor)
+              .toDart)
+          .toDart,
 );
 
 // #############################################################################

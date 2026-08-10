@@ -34,6 +34,7 @@ export {
 
 export {
   createNodePrompts,
+  readLineFromStream,
   UnansweredPromptError,
   type NodePromptOptions,
 } from './prompts-node.js';

@@ -31,6 +31,10 @@
   `cat` and `sleep`, and batch wrappers are given the shell Node requires
   for them.
 
+- The prompt callbacks are asynchronous, so the Node host reads through
+  `readline` rather than blocking on a file descriptor — which is what a
+  Windows console handle does not support.
+
 ### Changed
 
 - The bridge is now `globalThis.ggBridge` with two methods, `setHost` and

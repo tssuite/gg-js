@@ -124,10 +124,12 @@ That is how gg is tested, and how you would sandbox it.
   `package:path` derives its path style from the page URL and would treat
   gg's paths as URLs.
 - **Windows is new.** CI runs there now, and the known Windows-specific
-  traps are handled: `package:path` picks the Windows style, and batch
-  wrappers like `pana.bat` are given a shell, which Node requires. Reading
-  a line from a Windows console handle synchronously is the part still
-  unproven, so the interactive prompts may not work there yet.
+  traps are handled: `package:path` picks the Windows style, batch
+  wrappers like `pana.bat` are given the shell Node requires, and the
+  prompts read through `readline` rather than blocking on a console
+  handle. What remains unproven is `dart:io`'s own `stdin.readLineSync()`,
+  which gg uses in the interactive publish flow and which cannot be
+  anything but a synchronous read.
 
 ## Requirements
 

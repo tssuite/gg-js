@@ -48,12 +48,22 @@ export interface NodeHostOptions {
   /** Receives everything gg writes to stderr. Defaults to `process.stderr`. */
   onStderr?: (text: string) => void;
   /**
-   * The file descriptor gg reads its answers from. Defaults to stdin.
+   * The file descriptor `dart:io`'s `stdin.readLineSync()` reads from.
+   * Defaults to stdin.
    *
-   * Point it somewhere else to feed gg scripted input, or to keep it away
-   * from a stdin that belongs to the surrounding program.
+   * That one call is synchronous and cannot be anything else, so it needs
+   * a descriptor rather than a stream. The interactive prompts read from
+   * {@link NodeHostOptions.stdin} instead.
    */
   stdinFd?: number;
+  /**
+   * The stream the interactive prompts read from. Defaults to
+   * `process.stdin`.
+   *
+   * Point it somewhere else to feed gg scripted answers, or to keep it
+   * away from a stdin that belongs to the surrounding program.
+   */
+  stdin?: NodeJS.ReadableStream;
   /**
    * The prompts gg asks its interactive questions with.
    *
@@ -287,10 +297,7 @@ export function createNodeHost(options: NodeHostOptions = {}): GgHost {
     options.prompts === false
       ? undefined
       : (options.prompts ??
-        createNodePrompts({
-          write: writeStdout,
-          readLine: () => readLineFrom(options.stdinFd),
-        }));
+        createNodePrompts({ write: writeStdout, input: options.stdin }));
 
   return {
     fs: fileSystem,

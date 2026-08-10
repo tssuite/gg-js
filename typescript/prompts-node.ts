@@ -12,13 +12,17 @@
 // are line-based instead — a numbered list and a plain line of input.
 // Same questions, same answers, fewer keystrokes saved.
 //
-// Everything here is **synchronous**, because gg's callers are: they are
-// reached from code that cannot await. The read therefore blocks on the
-// file descriptor until the user hits return. gg only ever asks after
-// `throwWhenNotATerminal` has confirmed a terminal is attached, so this
-// never blocks a piped or headless run.
+// Reading goes through `node:readline`, which works on every platform Node
+// runs on. That is the whole reason gg's prompt contract is asynchronous:
+// a synchronous one would force a blocking read from file descriptor 0,
+// and a Windows console handle does not answer that the way a pty does.
+//
+// `terminal: false` is deliberate. It leaves the line editing to the
+// terminal itself — echo, backspace, the lot — instead of readline taking
+// the tty over, which is both simpler and identical across platforms.
 
-import { readLineFrom } from './host-node.js';
+import { createInterface } from 'node:readline';
+
 import type { PromptHost } from './host.js';
 
 /** Options for {@link createNodePrompts}. */
@@ -28,11 +32,11 @@ export interface NodePromptOptions {
   /**
    * Reads one line of the answer, `null` at end of input.
    *
-   * Defaults to a blocking read from {@link NodePromptOptions.stdinFd}.
+   * Defaults to reading one line from {@link NodePromptOptions.input}.
    */
-  readLine?: () => string | null;
-  /** The descriptor the answers are read from. Defaults to stdin. */
-  stdinFd?: number;
+  readLine?: () => Promise<string | null>;
+  /** The stream answers are read from. Defaults to `process.stdin`. */
+  input?: NodeJS.ReadableStream;
 }
 
 /**
@@ -53,6 +57,25 @@ export class UnansweredPromptError extends Error {
 }
 
 /**
+ * Reads a single line from [input].
+ * @param input - The stream to read from.
+ * @returns The line without its newline, or `null` at end of input.
+ */
+export async function readLineFromStream(
+  input: NodeJS.ReadableStream,
+): Promise<string | null> {
+  const rl = createInterface({ input, terminal: false });
+  try {
+    for await (const line of rl) {
+      return line;
+    }
+    return null;
+  } finally {
+    rl.close();
+  }
+}
+
+/**
  * Builds the prompts gg asks its questions with under Node.
  * @param options - Where to write the question and read the answer.
  * @returns A host gg can ask.
@@ -60,12 +83,19 @@ export class UnansweredPromptError extends Error {
 export function createNodePrompts(
   options: NodePromptOptions = {},
 ): PromptHost {
+  /* v8 ignore next — a test that let this fall through to the process'
+     own stdin would block on it. */
+  const input = options.input ?? process.stdin;
   const write =
     options.write ?? ((text: string) => process.stdout.write(text));
-  const readLine = options.readLine ?? (() => readLineFrom(options.stdinFd));
+  const readLine = options.readLine ?? (() => readLineFromStream(input));
 
   return {
-    select(prompt: string, choices: string[], initialIndex: number): number {
+    async select(
+      prompt: string,
+      choices: string[],
+      initialIndex: number,
+    ): Promise<number> {
       const fallback =
         initialIndex >= 0 && initialIndex < choices.length ? initialIndex : 0;
 
@@ -77,7 +107,7 @@ export function createNodePrompts(
         });
         write(`Number [${fallback + 1}]: `);
 
-        const answer = readLine();
+        const answer = await readLine();
         if (answer === null) throw new UnansweredPromptError(prompt);
 
         // Return accepts the marked choice — the same shortcut interact's
@@ -86,7 +116,11 @@ export function createNodePrompts(
         if (trimmed === '') return fallback;
 
         const picked = Number.parseInt(trimmed, 10);
-        if (Number.isInteger(picked) && picked >= 1 && picked <= choices.length) {
+        if (
+          Number.isInteger(picked) &&
+          picked >= 1 &&
+          picked <= choices.length
+        ) {
           return picked - 1;
         }
 
@@ -94,7 +128,11 @@ export function createNodePrompts(
       }
     },
 
-    input(prompt: string, defaultValue: string, initialText: string): string {
+    async input(
+      prompt: string,
+      defaultValue: string,
+      initialText: string,
+    ): Promise<string> {
       // `asMessageEditor` only picks interact's colours, and there is
       // nothing to colour here, so it is ignored. The editor is a single
       // line on both sides — interact's `Input` is too.
@@ -106,7 +144,7 @@ export function createNodePrompts(
       const suggestion = initialText !== '' ? initialText : defaultValue;
       write(suggestion !== '' ? `${prompt} [${suggestion}]: ` : `${prompt}: `);
 
-      const answer = readLine();
+      const answer = await readLine();
       if (answer === null) throw new UnansweredPromptError(prompt);
 
       return answer.trim() === '' ? suggestion : answer;

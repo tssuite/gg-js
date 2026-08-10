@@ -4,9 +4,7 @@
 // Use of this source code is governed by terms that can be
 // found in the LICENSE file in the root of this package.
 
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
+import { Readable } from 'node:stream';
 import { describe, expect, test } from 'vitest';
 
 import { createNodeHost } from '../host-node.js';
@@ -27,7 +25,7 @@ function scripted(answers: string[]): {
   const written: string[] = [];
   const prompts = createNodePrompts({
     write: (text) => written.push(text),
-    readLine: () => answers.shift() ?? null,
+    readLine: async () => answers.shift() ?? null,
   });
   return { prompts, written };
 }
@@ -35,20 +33,20 @@ function scripted(answers: string[]): {
 describe('createNodePrompts()', () => {
   // ###########################################################################
   describe('select', () => {
-    test('returns the index the user picked', () => {
+    test('returns the index the user picked', async () => {
       const { prompts, written } = scripted(['2']);
 
-      const index = prompts.select('Pick one', ['alpha', 'beta', 'gamma'], 0);
+      const index = await prompts.select('Pick one', ['alpha', 'beta', 'gamma'], 0);
 
       expect(index).toBe(1);
       expect(written.join('')).toContain('Pick one');
       expect(written.join('')).toContain('2) beta');
     });
 
-    test('marks the initial choice and takes it on an empty answer', () => {
+    test('marks the initial choice and takes it on an empty answer', async () => {
       const { prompts, written } = scripted(['']);
 
-      const index = prompts.select('Pick', ['no', 'yes'], 1);
+      const index = await prompts.select('Pick', ['no', 'yes'], 1);
 
       expect(index).toBe(1);
       // The marker tells the user what return will give them.
@@ -56,23 +54,23 @@ describe('createNodePrompts()', () => {
       expect(written.join('')).toContain('[2]');
     });
 
-    test('asks again after an answer that is not a choice', () => {
+    test('asks again after an answer that is not a choice', async () => {
       const { prompts, written } = scripted(['nope', '17', '1']);
 
-      expect(prompts.select('Pick', ['a', 'b'], 0)).toBe(0);
+      expect(await prompts.select('Pick', ['a', 'b'], 0)).toBe(0);
       expect(written.join('')).toContain('between 1 and 2');
     });
 
-    test('falls back to the first choice for an out-of-range initial', () => {
+    test('falls back to the first choice for an out-of-range initial', async () => {
       const { prompts } = scripted(['']);
-      expect(prompts.select('Pick', ['a', 'b'], 99)).toBe(0);
+      expect(await prompts.select('Pick', ['a', 'b'], 99)).toBe(0);
     });
 
-    test('refuses to guess when stdin ends', () => {
+    test('refuses to guess when stdin ends', async () => {
       const { prompts } = scripted([]);
 
       // Picking a default here would decide what gets published.
-      expect(() => prompts.select('Pick', ['a', 'b'], 0)).toThrow(
+      await expect(prompts.select('Pick', ['a', 'b'], 0)).rejects.toThrow(
         UnansweredPromptError,
       );
     });
@@ -80,37 +78,41 @@ describe('createNodePrompts()', () => {
 
   // ###########################################################################
   describe('input', () => {
-    test('returns what the user typed', () => {
+    test('returns what the user typed', async () => {
       const { prompts, written } = scripted(['my message']);
 
-      expect(prompts.input('Message', '', '', false)).toBe('my message');
+      expect(await prompts.input('Message', '', '', false)).toBe(
+        'my message',
+      );
       expect(written.join('')).toBe('Message: ');
     });
 
-    test('keeps the suggested text on an empty answer', () => {
+    test('keeps the suggested text on an empty answer', async () => {
       const { prompts, written } = scripted(['']);
 
-      expect(prompts.input('Message', '', 'suggested', false)).toBe(
+      expect(await prompts.input('Message', '', 'suggested', false)).toBe(
         'suggested',
       );
       expect(written.join('')).toContain('[suggested]');
     });
 
-    test('falls back to the default value when there is no initial text', () => {
+    test('falls back to the default value when there is no initial text', async () => {
       const { prompts } = scripted(['']);
-      expect(prompts.input('Message', 'fallback', '', false)).toBe('fallback');
+      expect(await prompts.input('Message', 'fallback', '', false)).toBe(
+        'fallback',
+      );
     });
 
-    test('prefers the initial text over the default value', () => {
+    test('prefers the initial text over the default value', async () => {
       const { prompts } = scripted(['']);
-      expect(prompts.input('Message', 'default', 'initial', false)).toBe(
+      expect(await prompts.input('Message', 'default', 'initial', false)).toBe(
         'initial',
       );
     });
 
-    test('refuses to guess when stdin ends', () => {
+    test('refuses to guess when stdin ends', async () => {
       const { prompts } = scripted([]);
-      expect(() => prompts.input('Message', 'x', '', false)).toThrow(
+      await expect(prompts.input('Message', 'x', '', false)).rejects.toThrow(
         /stdin ended/,
       );
     });
@@ -118,65 +120,66 @@ describe('createNodePrompts()', () => {
 
   // ###########################################################################
   describe('defaults', () => {
-    test('reads the answer from a descriptor and writes the question out', () => {
-      // No `write` and no `readLine`: the question goes to the real
-      // stdout and the answer comes off the descriptor, which is what a
-      // user at a terminal gets.
-      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gg-prompt-'));
-      const file = path.join(tmp, 'answers.txt');
-      fs.writeFileSync(file, '2\n');
-      const fd = fs.openSync(file, 'r');
+    test('reads a line off the input stream', async () => {
+      // No `readLine`: the answer comes through readline, which is the
+      // path a user at a terminal takes.
+      const written: string[] = [];
+      const prompts = createNodePrompts({
+        write: (text) => written.push(text),
+        input: Readable.from(['2\n']),
+      });
 
-      try {
-        const prompts = createNodePrompts({ stdinFd: fd });
-        expect(prompts.select('Pick', ['a', 'b'], 0)).toBe(1);
-      } finally {
-        fs.closeSync(fd);
-        fs.rmSync(tmp, { recursive: true, force: true });
-      }
+      expect(await prompts.select('Pick', ['a', 'b'], 0)).toBe(1);
+      expect(written.join('')).toContain('Pick');
+    });
+
+    test('writes the question to stdout when no sink is given', async () => {
+      const prompts = createNodePrompts({ input: Readable.from(['hi\n']) });
+      expect(await prompts.input('Message', '', '', false)).toBe('hi');
+    });
+
+    test('reports end of input on an empty stream', async () => {
+      const prompts = createNodePrompts({
+        write: () => {},
+        input: Readable.from([]),
+      });
+
+      await expect(prompts.input('Message', '', '', false)).rejects.toThrow(
+        UnansweredPromptError,
+      );
     });
   });
 
   // ###########################################################################
   describe('as part of the Node host', () => {
-    test('is supplied by default', () => {
+    test('is supplied by default', async () => {
       expect(createNodeHost().prompts).toBeDefined();
     });
 
-    test('can be switched off', () => {
+    test('can be switched off', async () => {
       // Then gg refuses its interactive commands with an actionable
       // message instead of asking a question nobody is there to answer.
       expect(createNodeHost({ prompts: false }).prompts).toBeUndefined();
     });
 
-    test('can be replaced', () => {
+    test('can be replaced', async () => {
       const { prompts } = scripted(['1']);
       expect(createNodeHost({ prompts }).prompts).toBe(prompts);
     });
 
-    test('reads its answers from the host\'s stdin descriptor', () => {
-      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gg-prompt-host-'));
-      const file = path.join(tmp, 'answers.txt');
-      fs.writeFileSync(file, 'from the host\n');
-      const fd = fs.openSync(file, 'r');
+    test('reads its answers from the stream the host was given', async () => {
       const written: string[] = [];
+      const host = createNodeHost({
+        stdin: Readable.from(['from the host\n']),
+        onStdout: (text) => written.push(text),
+      });
 
-      try {
-        const host = createNodeHost({
-          stdinFd: fd,
-          onStdout: (text) => written.push(text),
-        });
-
-        expect(host.prompts!.input('Message', '', '', false)).toBe(
-          'from the host',
-        );
-        // The question goes through the host console, so an embedder that
-        // captures gg's output captures the prompt with it.
-        expect(written.join('')).toContain('Message');
-      } finally {
-        fs.closeSync(fd);
-        fs.rmSync(tmp, { recursive: true, force: true });
-      }
+      expect(await host.prompts!.input('Message', '', '', false)).toBe(
+        'from the host',
+      );
+      // The question goes through the host console, so an embedder that
+      // captures gg's output captures the prompt with it.
+      expect(written.join('')).toContain('Message');
     });
   });
 });
