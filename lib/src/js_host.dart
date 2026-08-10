@@ -18,6 +18,7 @@ library;
 import 'dart:io';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
+import 'dart:typed_data';
 
 import 'package:gg/gg.dart';
 
@@ -111,13 +112,36 @@ extension type GgProcessJs._(JSObject _) implements JSObject {
     GgRunOptionsJs options,
   );
 
-  /// Starts a program. May run it to completion when the host cannot
-  /// stream — gg only ever reads the output afterwards.
-  external JSPromise<GgOutcomeJs> start(
+  /// Starts a program and hands it over while it runs.
+  external JSPromise<GgStartedJs> start(
     String executable,
     JSArray<JSString> arguments,
     GgRunOptionsJs options,
   );
+}
+
+/// A program that was started and is still running.
+extension type GgStartedJs._(JSObject _) implements JSObject {
+  /// The process id, or `0`.
+  external int get pid;
+
+  /// Registers the stdout sink.
+  external void onStdout(JSFunction listener);
+
+  /// Registers the stderr sink.
+  external void onStderr(JSFunction listener);
+
+  /// Registers the exit callback.
+  external void onExit(JSFunction listener);
+
+  /// Writes to the program's stdin.
+  external void writeStdin(String text);
+
+  /// Closes the program's stdin.
+  external void closeStdin();
+
+  /// Sends a signal to the program.
+  external bool kill(String signal);
 }
 
 /// `{ workingDirectory, environment, includeParentEnvironment, runInShell,
@@ -291,7 +315,7 @@ GgProcessCallbacks _process(GgProcessJs process) => GgProcessCallbacks(
         includeParentEnvironment = true,
         runInShell = false,
         detached = false,
-      }) async => _outcome(
+      }) async => _JsStartedProcess(
         await process
             .start(
               executable,
@@ -307,6 +331,38 @@ GgProcessCallbacks _process(GgProcessJs process) => GgProcessCallbacks(
             .toDart,
       ),
 );
+
+// #############################################################################
+/// A [GgStartedProcess] backed by the JavaScript handle the host returned.
+class _JsStartedProcess implements GgStartedProcess {
+  _JsStartedProcess(this._js);
+
+  final GgStartedJs _js;
+
+  @override
+  int get pid => _js.pid;
+
+  @override
+  void onStdout(void Function(Uint8List chunk) listener) =>
+      _js.onStdout(((JSUint8Array chunk) => listener(chunk.toDart)).toJS);
+
+  @override
+  void onStderr(void Function(Uint8List chunk) listener) =>
+      _js.onStderr(((JSUint8Array chunk) => listener(chunk.toDart)).toJS);
+
+  @override
+  void onExit(void Function(int code) listener) =>
+      _js.onExit(((JSNumber code) => listener(code.toDartInt)).toJS);
+
+  @override
+  void writeStdin(String text) => _js.writeStdin(text);
+
+  @override
+  void closeStdin() => _js.closeStdin();
+
+  @override
+  bool kill(String signal) => _js.kill(signal);
+}
 
 // .............................................................................
 GgPlatformCallbacks _platform(GgPlatformJs platform) => GgPlatformCallbacks(

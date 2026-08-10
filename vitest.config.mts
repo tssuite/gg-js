@@ -33,10 +33,11 @@ export default defineConfig({
           name: 'e2e',
           environment: 'node',
           include: ['typescript/e2e/**/*.e2e.test.ts'],
-          // Each case spawns a fresh Node process that compiles a 1.2 MB
-          // Wasm module before it does anything.
-          testTimeout: 120_000,
-          hookTimeout: 120_000,
+          // Each case spawns a fresh Node process that compiles a 1.3 MB
+          // Wasm module before it does anything, and one of them runs a
+          // whole `dart test` suite with coverage on top.
+          testTimeout: 300_000,
+          hookTimeout: 300_000,
         },
       },
       {

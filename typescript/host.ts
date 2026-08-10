@@ -97,6 +97,30 @@ export interface FileSystemHost {
   linkTarget(link: string): string;
 }
 
+/**
+ * A program that was started and is still running.
+ *
+ * The `on…` methods are called once, immediately after the process was
+ * started. An implementation that produces output before then must hold on
+ * to it until its listener arrives — nothing gg reads may be dropped.
+ */
+export interface StartedProcess {
+  /** The process id, or 0 when the host does not report one. */
+  readonly pid: number;
+  /** Registers the sink for everything the program writes to stdout. */
+  onStdout(listener: (chunk: Uint8Array) => void): void;
+  /** Registers the sink for everything the program writes to stderr. */
+  onStderr(listener: (chunk: Uint8Array) => void): void;
+  /** Registers the callback for when the program terminates. Called once. */
+  onExit(listener: (code: number) => void): void;
+  /** Writes to the program's stdin. No newline is appended. */
+  writeStdin(text: string): void;
+  /** Closes the program's stdin. */
+  closeStdin(): void;
+  /** Sends a signal to the program. Returns whether it was delivered. */
+  kill(signal: string): boolean;
+}
+
 /** Running the command line tools gg drives — git, gh, pub, npm, … */
 export interface ProcessHost {
   /** Runs a program and resolves when it has finished. */
@@ -106,17 +130,19 @@ export interface ProcessHost {
     options: RunOptions,
   ): Promise<ProcessOutcome>;
   /**
-   * Starts a program.
+   * Starts a program and hands it over while it runs.
    *
-   * gg only ever reads the output after the fact, so a host that cannot
-   * stream may simply run the program to completion — except when
-   * `options.detached` is set, where gg wants the process to outlive it.
+   * gg needs the output as it arrives, not afterwards: `can commit` parses
+   * `dart test`'s progress line by line, and `do publish` types the
+   * confirmation into the started program's stdin. With
+   * `options.detached` gg wants the process to outlive it and never reads
+   * anything back.
    */
   start(
     executable: string,
     args: string[],
     options: RunOptions,
-  ): Promise<ProcessOutcome>;
+  ): Promise<StartedProcess>;
 }
 
 /** What gg needs to know about the machine and the process. */

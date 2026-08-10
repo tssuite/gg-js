@@ -57,6 +57,7 @@ function runCli(args: string[], cwd: string): CliResult {
 describe('npx gg-js', () => {
   let workspace: string;
   let repo: string;
+  let dartPackage: string;
 
   beforeAll(() => {
     if (!fs.existsSync(cli)) {
@@ -104,11 +105,82 @@ describe('npx gg-js', () => {
     git('config', 'user.name', 'E2E');
     git('add', '.');
     git('commit', '-m', 'initial');
+
+    dartPackage = buildDartPackage(workspace);
   });
 
   afterAll(() => {
     fs.rmSync(workspace, { recursive: true, force: true });
   });
+
+  /**
+   * Writes a minimal but complete Dart package `gg one can commit` accepts.
+   *
+   * Complete means: analyzable, formatted, one implementation file with a
+   * test file next to it, and 100% coverage — gg checks all of that, and
+   * anything missing would fail the run for a reason that has nothing to do
+   * with the bridge.
+   * @param root - Where to put it.
+   * @returns The package directory.
+   */
+  function buildDartPackage(root: string): string {
+    const dir = path.join(root, 'dart-package');
+    fs.mkdirSync(path.join(dir, 'lib', 'src'), { recursive: true });
+    fs.mkdirSync(path.join(dir, 'test'), { recursive: true });
+
+    fs.writeFileSync(
+      path.join(dir, 'pubspec.yaml'),
+      [
+        'name: e2e_probe',
+        'version: 1.0.0',
+        'environment:',
+        '  sdk: ">=3.8.0 <4.0.0"',
+        'dev_dependencies:',
+        '  lints: ^6.0.0',
+        '  test: ^1.24.0',
+        '',
+      ].join('\n'),
+    );
+    fs.writeFileSync(
+      path.join(dir, 'analysis_options.yaml'),
+      'include: package:lints/recommended.yaml\n',
+    );
+    fs.writeFileSync(
+      path.join(dir, 'lib', 'src', 'adder.dart'),
+      'int add(int a, int b) => a + b;\n',
+    );
+    fs.writeFileSync(
+      path.join(dir, 'test', 'adder_test.dart'),
+      [
+        "import 'package:e2e_probe/src/adder.dart';",
+        "import 'package:test/test.dart';",
+        '',
+        'void main() {',
+        "  test('adds', () {",
+        '    expect(add(2, 3), 5);',
+        '  });',
+        '}',
+        '',
+      ].join('\n'),
+    );
+    fs.writeFileSync(path.join(dir, '.gitattributes'), '* text=auto eol=lf\n');
+    fs.writeFileSync(path.join(dir, '.gitignore'), 'coverage/\n.dart_tool/\n');
+
+    const git = (...args: string[]): void => {
+      const r = spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
+      if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
+    };
+    git('init', '--initial-branch=main');
+    git('config', 'user.email', 'e2e@example.com');
+    git('config', 'user.name', 'E2E');
+    git('add', '.');
+    git('commit', '-m', 'initial');
+
+    const pub = spawnSync('dart', ['pub', 'get'], { cwd: dir, encoding: 'utf8' });
+    if (pub.status !== 0) throw new Error(`dart pub get: ${pub.stderr}`);
+
+    return dir;
+  }
 
   // ###########################################################################
   describe('the module loads and runs', () => {
@@ -224,6 +296,25 @@ describe('npx gg-js', () => {
       } finally {
         fs.writeFileSync(attributes, saved);
       }
+    });
+
+    test('runs a package\'s test suite and agrees with dart test', () => {
+      // The regression that motivated the streaming host. gg parses
+      // `dart test`'s output line by line; a host that hands the whole run
+      // over at once makes it read a passing suite as a failure. This
+      // asserts the two agree.
+      const direct = spawnSync('dart', ['test'], {
+        cwd: dartPackage,
+        encoding: 'utf8',
+      });
+      expect(direct.status).toBe(0);
+
+      fs.rmSync(path.join(dartPackage, '.gg', 'gg.json'), { force: true });
+      const result = runCli(['one', 'can', 'commit'], dartPackage);
+
+      expect(result.output).toContain('dart test');
+      expect(result.output).not.toContain('Tests failed');
+      expect(result.status).toBe(0);
     });
 
     test('reports a missing executable instead of crashing', () => {

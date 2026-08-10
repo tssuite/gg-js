@@ -10,7 +10,7 @@
 // `node:child_process` and `process`. The interesting decisions are
 // documented where they are made; the rest is a lookup table.
 
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -27,6 +27,7 @@ import {
   type ProcessHost,
   type ProcessOutcome,
   type RunOptions,
+  type StartedProcess,
 } from './host.js';
 
 /** Options for {@link createNodeHost}. */
@@ -223,24 +224,19 @@ export function createNodeHost(options: NodeHostOptions = {}): GgHost {
       };
     },
 
-    async start(executable, args, runOptions): Promise<ProcessOutcome> {
-      if (!runOptions.detached) {
-        return processHost.run(executable, args, runOptions);
-      }
-
-      // Detached means »outlive gg«: `gg do code` opens the editor this way.
-      // There is no outcome to report, so the promise resolves as soon as
-      // the child is on its way.
+    async start(executable, args, runOptions): Promise<StartedProcess> {
       const child = spawn(executable, args, {
         cwd: absolute(runOptions.workingDirectory ?? cwd),
         env: spawnEnv(runOptions),
         shell: runOptions.runInShell,
-        detached: true,
-        stdio: 'ignore',
+        // Detached means »outlive gg«: `gg do code` opens the editor that
+        // way and never reads anything back.
+        detached: runOptions.detached,
+        stdio: runOptions.detached ? 'ignore' : 'pipe',
       });
-      child.unref();
-      /* v8 ignore next — `spawn` without an error event always has a pid. */
-      return { exitCode: 0, stdout: '', stderr: '', pid: child.pid ?? 0 };
+      if (runOptions.detached) child.unref();
+
+      return new NodeStartedProcess(child, runOptions.detached);
     },
   };
 
@@ -331,5 +327,136 @@ export function readLineFrom(fd: number = 0): string | null {
     const char = chunk.toString('utf8');
     if (char === '\n') return line;
     if (char !== '\r') line += char;
+  }
+}
+
+// #############################################################################
+/**
+ * A {@link StartedProcess} on top of a Node `ChildProcess`.
+ *
+ * Output is buffered from the moment the child is spawned. Dart attaches
+ * its listeners one microtask later, and a fast program — `echo`, say —
+ * can be done by then; without the buffer its output would be lost, and gg
+ * would read an empty test run as a failure.
+ */
+export class NodeStartedProcess implements StartedProcess {
+  /**
+   * Wraps a spawned child.
+   * @param child - The process `spawn` returned.
+   * @param detached - Whether the child was started to outlive gg.
+   */
+  constructor(
+    private readonly child: ChildProcess,
+    detached: boolean,
+  ) {
+    if (detached) {
+      // Nothing to read, and no exit to wait for.
+      this.exitCode = 0;
+      this.exited = true;
+      return;
+    }
+
+    child.stdout?.on('data', (chunk: Buffer) => this.push('out', chunk));
+    child.stderr?.on('data', (chunk: Buffer) => this.push('err', chunk));
+
+    const finish = (code: number): void => {
+      if (this.exited) return;
+      this.exited = true;
+      this.exitCode = code;
+      this.onExitListener?.(code);
+    };
+    /* v8 ignore next 3 — `close` always carries either a code or a signal;
+       the last fallback is there so a future Node cannot make gg believe a
+       killed process succeeded. */
+    child.on('close', (code, signal) =>
+      finish(code ?? (signal !== null ? 128 : 0)),
+    );
+    child.on('error', () => finish(127));
+  }
+
+  private outListener?: (chunk: Uint8Array) => void;
+  private errListener?: (chunk: Uint8Array) => void;
+  private onExitListener?: (code: number) => void;
+  private readonly outBuffer: Uint8Array[] = [];
+  private readonly errBuffer: Uint8Array[] = [];
+  private exited = false;
+  private exitCode = 0;
+
+  /** The process id, or 0 when the spawn failed. */
+  get pid(): number {
+    /* v8 ignore next — a child that failed to spawn still reports its
+       error through `onExit`, so this fallback is never reached in
+       practice. */
+    return this.child.pid ?? 0;
+  }
+
+  /**
+   * Registers the stdout sink and replays whatever arrived before it.
+   * @param listener - Receives each chunk.
+   */
+  onStdout(listener: (chunk: Uint8Array) => void): void {
+    this.outListener = listener;
+    this.drain(this.outBuffer, listener);
+  }
+
+  /**
+   * Registers the stderr sink and replays whatever arrived before it.
+   * @param listener - Receives each chunk.
+   */
+  onStderr(listener: (chunk: Uint8Array) => void): void {
+    this.errListener = listener;
+    this.drain(this.errBuffer, listener);
+  }
+
+  /**
+   * Registers the exit callback, firing at once if the child already ended.
+   * @param listener - Receives the exit code.
+   */
+  onExit(listener: (code: number) => void): void {
+    this.onExitListener = listener;
+    if (this.exited) listener(this.exitCode);
+  }
+
+  /**
+   * Writes to the child's stdin.
+   * @param text - What to write. No newline is appended.
+   */
+  writeStdin(text: string): void {
+    this.child.stdin?.write(text);
+  }
+
+  /** Closes the child's stdin. */
+  closeStdin(): void {
+    this.child.stdin?.end();
+  }
+
+  /**
+   * Sends a signal to the child.
+   * @param signal - A signal name; anything unrecognised becomes SIGTERM.
+   * @returns Whether the signal was delivered.
+   */
+  kill(signal: string): boolean {
+    const name = signal.toUpperCase().replace('PROCESSSIGNAL.', '');
+    const known = ['SIGTERM', 'SIGKILL', 'SIGINT', 'SIGHUP'];
+    return this.child.kill(
+      (known.includes(name) ? name : 'SIGTERM') as NodeJS.Signals,
+    );
+  }
+
+  private push(stream: 'out' | 'err', chunk: Buffer): void {
+    const bytes = new Uint8Array(chunk);
+    const listener = stream === 'out' ? this.outListener : this.errListener;
+    if (listener) {
+      listener(bytes);
+    } else {
+      (stream === 'out' ? this.outBuffer : this.errBuffer).push(bytes);
+    }
+  }
+
+  private drain(
+    buffer: Uint8Array[],
+    listener: (chunk: Uint8Array) => void,
+  ): void {
+    while (buffer.length > 0) listener(buffer.shift()!);
   }
 }

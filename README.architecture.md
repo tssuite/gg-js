@@ -153,6 +153,12 @@ implementation this package ships. Three decisions in it are not obvious:
 - **`start` only detaches when asked.** gg uses `Process.start` for two
   different things: reading a program's output, and launching an editor
   that should outlive gg. Only the second gets a detached child.
+- **A started process buffers until Dart listens.** `spawn` returns and
+  Dart attaches its listeners one microtask later — a fast program can be
+  done by then. `NodeStartedProcess` therefore collects output from the
+  moment the child exists and replays it when the listener arrives.
+  Without that, gg reads an empty test run, which it reports as a
+  failure.
 
 ## 7. The executable
 
@@ -216,13 +222,13 @@ of a `Map` and watch it find a `pubspec.yaml` that exists nowhere on disk.
 
 ## 12. Future work
 
-- **Streaming `Process.start`.** Not cosmetic: `gg_test` parses
-  `dart test`'s output per chunk, and the replay model hands it one chunk
-  for the whole run, which it reads as a failure. `gg one can commit`
-  therefore reports failing tests through this package even when they
-  pass. `gg_publish` additionally types the publish confirmation into the
-  started process' stdin, which run-to-completion cannot do at all.
 - **Windows,** which needs `package:path` to pick the windows style — the
   `Uri.base` trick of §5 always yields posix.
 - **Prompts from Node,** filling `host.prompts` with a real readline
   implementation so the interactive commands work again.
+- **An RxJS entry point** over the callback protocol, for consumers who
+  would rather compose gg's output as an `Observable` than register a
+  callback. The protocol is deliberately callback-shaped: an `Observable`
+  has to be decomposed into `next`/`error`/`complete` functions to cross
+  the Wasm boundary anyway, so putting RxJS underneath would cost a
+  dependency without removing any interop code.

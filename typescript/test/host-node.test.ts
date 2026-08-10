@@ -20,7 +20,11 @@ import {
   nodePlatformToDart,
   readLineFrom,
 } from '../host-node.js';
-import { EntityType, type GgHost } from '../host.js';
+import {
+  EntityType,
+  type GgHost,
+  type StartedProcess,
+} from '../host.js';
 
 describe('createNodeHost()', () => {
   let tmp: string;
@@ -292,26 +296,151 @@ describe('createNodeHost()', () => {
       expect(result.stdout.trim()).toBe('hello-shell');
     });
 
-    test('start() runs to completion unless detached', async () => {
-      const result = await host.process.start(
-        process.execPath,
-        ['-e', 'process.stdout.write("started")'],
-        options,
-      );
-
-      expect(result.stdout).toBe('started');
-    });
-
     test('start(detached) returns without waiting', async () => {
       const marker = path.join(tmp, 'detached.txt');
-      const result = await host.process.start(
+      const started = await host.process.start(
         process.execPath,
         ['-e', `require('fs').writeFileSync(${JSON.stringify(marker)}, 'x')`],
         { ...options, detached: true },
       );
 
-      expect(result.exitCode).toBe(0);
-      expect(result.pid).toBeGreaterThan(0);
+      expect(started.pid).toBeGreaterThan(0);
+
+      // A detached child is fire and forget: it reports no output and its
+      // exit callback fires at once, because gg never waits for it.
+      let exited = -1;
+      started.onStdout(() => {});
+      started.onStderr(() => {});
+      started.onExit((code) => (exited = code));
+      expect(exited).toBe(0);
+      expect(() => started.writeStdin('ignored')).not.toThrow();
+      expect(() => started.closeStdin()).not.toThrow();
+    });
+  });
+
+  // ###########################################################################
+  describe('started processes', () => {
+    const options = {
+      includeParentEnvironment: true,
+      runInShell: false,
+      detached: false,
+    };
+
+    /** Collects a started process' output and exit code. */
+    function collect(started: StartedProcess): Promise<{
+      out: string;
+      err: string;
+      chunks: number;
+      code: number;
+    }> {
+      return new Promise((resolve) => {
+        const decoder = new TextDecoder();
+        let out = '';
+        let err = '';
+        let chunks = 0;
+        started.onStdout((chunk) => {
+          out += decoder.decode(chunk);
+          chunks += 1;
+        });
+        started.onStderr((chunk) => {
+          err += decoder.decode(chunk);
+        });
+        started.onExit((code) => resolve({ out, err, chunks, code }));
+      });
+    }
+
+    test('streams stdout and stderr and reports the exit code', async () => {
+      const started = await host.process.start(
+        process.execPath,
+        [
+          '-e',
+          'process.stdout.write("out"); process.stderr.write("err"); process.exit(3)',
+        ],
+        options,
+      );
+
+      const result = await collect(started);
+      expect(result.out).toBe('out');
+      expect(result.err).toBe('err');
+      expect(result.code).toBe(3);
+      expect(started.pid).toBeGreaterThan(0);
+    });
+
+    test('buffers output produced before a listener arrives', async () => {
+      // The whole reason the handle buffers: a fast program can be done
+      // before Dart attaches its listeners one microtask later, and gg
+      // reading an empty run is exactly the bug this guards.
+      const started = await host.process.start(
+        process.execPath,
+        ['-e', 'process.stdout.write("early")'],
+        options,
+      );
+
+      await new Promise((r) => setTimeout(r, 200));
+
+      const result = await collect(started);
+      expect(result.out).toBe('early');
+      expect(result.code).toBe(0);
+    });
+
+    test('buffers stderr produced before a listener arrives', async () => {
+      const started = await host.process.start(
+        process.execPath,
+        ['-e', 'process.stderr.write("early-error")'],
+        options,
+      );
+
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect((await collect(started)).err).toBe('early-error');
+    });
+
+    test('delivers output in more than one chunk', async () => {
+      const started = await host.process.start(
+        'sh',
+        ['-c', 'echo one; sleep 0.2; echo two'],
+        options,
+      );
+
+      const result = await collect(started);
+      expect(result.chunks).toBeGreaterThan(1);
+      expect(result.out).toBe('one\ntwo\n');
+    });
+
+    test('carries stdin into the program', async () => {
+      const started = await host.process.start('cat', [], options);
+      const done = collect(started);
+
+      started.writeStdin('through stdin');
+      started.closeStdin();
+
+      expect((await done).out).toBe('through stdin');
+    });
+
+    test('kills a running program', async () => {
+      const started = await host.process.start('sleep', ['30'], options);
+      const done = collect(started);
+
+      expect(started.kill('SIGTERM')).toBe(true);
+      expect((await done).code).not.toBe(0);
+    });
+
+    test('falls back to SIGTERM for an unknown signal', async () => {
+      const started = await host.process.start('sleep', ['30'], options);
+      const done = collect(started);
+
+      expect(started.kill('ProcessSignal.sigwhatever')).toBe(true);
+      await done;
+    });
+
+    test('reports a missing executable as a failed run', async () => {
+      const started = await host.process.start(
+        'gg-js-definitely-not-installed',
+        [],
+        options,
+      );
+
+      expect((await collect(started)).code).toBe(127);
     });
   });
 

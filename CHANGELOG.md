@@ -16,6 +16,11 @@
 - End-to-end tests that spawn the built binary as a real process against a
   throwaway gg workspace with a git repository in it.
 
+- Started processes stream: `host.process.start` hands over a
+  `StartedProcess` while the program runs, so gg sees `dart test`'s output
+  line by line and can type into a program's stdin. Without it
+  `gg one can commit` read a passing suite as a failure.
+
 ### Changed
 
 - The bridge is now `globalThis.ggBridge` with two methods, `setHost` and

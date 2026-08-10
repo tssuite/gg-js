@@ -48,7 +48,10 @@ npx @tssuite/gg-js do ls tickets
 npx @tssuite/gg-js one did commit
 ```
 
-Three things behave differently from the native executable — see
+`gg one can commit` runs the real checks — `dart analyze`, `dart format`
+and `dart test` with coverage — and reports what the native gg reports.
+
+Two things behave differently from the native executable — see
 [Limitations](#limitations).
 
 ## Using it from TypeScript
@@ -110,11 +113,6 @@ That is how gg is tested, and how you would sandbox it.
 
 ## Limitations
 
-- **`Process.start` does not stream.** A started program is run to
-  completion and its output replayed. `gg one can commit` therefore
-  reports failing tests even when they pass — `gg do commit`, `can push`
-  and `do publish` are affected with it. Reading, listing and inspecting
-  work; the commit and publish path does not yet.
 - **Interactive prompts are unavailable.** The selection lists and message
   editors of the native gg are drawn by a library that needs `dart:ffi`,
   which WebAssembly does not have. gg refuses those commands with a message
