@@ -64,7 +64,7 @@ jobs:
       - name: Build (Dart → JS+Wasm, then TS)
         run: pnpm run build
 
-      - name: Vitest (node + browser)
+      - name: Vitest (unit, e2e, browser) with coverage
         run: pnpm run test:vitest
 
       - name: Lint

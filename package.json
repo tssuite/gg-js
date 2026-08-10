@@ -1,13 +1,15 @@
 {
   "name": "@tssuite/gg-js",
   "version": "1.0.2",
-  "description": "Compile ggsuite/gg to webassembly and provide it via NPM",
+  "description": "The gg command line, compiled to WebAssembly and runnable from Node via npx.",
   "keywords": [
+    "gg",
+    "cli",
     "dart",
     "wasm",
     "webassembly",
-    "bridge",
-    "interop",
+    "monorepo",
+    "git",
     "typescript"
   ],
   "type": "module",
@@ -34,7 +36,7 @@
     "sync-version": "dart run scripts/sync_version.dart",
     "build:dart": "dart run build.dart",
     "build:dart:debug": "dart run build.dart --debug",
-    "build:ts": "tsc -p tsconfig.json && vite build && cp typescript/generated/bridge-wasm.wasm dist/bridge-wasm.wasm",
+    "build:ts": "tsc -p tsconfig.json && vite build && cp typescript/generated/bridge-wasm.wasm dist/bridge-wasm.wasm && cp bin/gg-js.mjs dist/gg-js.mjs && chmod +x dist/gg-js.mjs",
     "build": "pnpm run clean && pnpm run sync-version && pnpm run build:dart && pnpm run build:ts",
     "clean": "rm -rf dist typescript/generated && mkdir -p typescript/generated",
     "test:dart": "dart test",
@@ -42,14 +44,12 @@
     "test:node": "vitest run --project=node",
     "test:browser": "vitest run --project=browser",
     "test:coverage": "vitest run --coverage",
-    "test:example": "playwright test --config example/browser/playwright.config.ts",
-    "test": "pnpm run test:dart && pnpm run test:vitest && pnpm run test:browser && pnpm run test:node && pnpm run test:example && pnpm run lint",
+    "test": "pnpm run test:dart && pnpm run test:vitest && pnpm run lint && pnpm run format:check",
     "lint": "eslint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "example:browser": "vite --config example/browser/vite.config.mts",
-    "example:node": "node example/node-cli/index.mjs",
-    "prepublishOnly": "pnpm run build && pnpm run test"
+    "prepublishOnly": "pnpm run build && pnpm run test",
+    "test:e2e": "vitest run --project=e2e"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
@@ -82,5 +82,8 @@
   },
   "license": "MIT",
   "author": "Dr. Gabriel Gatzsche",
-  "packageManager": "pnpm@11.5.3+sha512.7ac1c919341c213a34dc0d02afb7143c5c26ac26ee8c4782deea821b8ac64d2134a081fd8941dae6e29bbb48f58dfc2b7fbceeccc07cb2f09d219d342a4969ed"
+  "packageManager": "pnpm@11.5.3+sha512.7ac1c919341c213a34dc0d02afb7143c5c26ac26ee8c4782deea821b8ac64d2134a081fd8941dae6e29bbb48f58dfc2b7fbceeccc07cb2f09d219d342a4969ed",
+  "bin": {
+    "gg-js": "./dist/gg-js.mjs"
+  }
 }

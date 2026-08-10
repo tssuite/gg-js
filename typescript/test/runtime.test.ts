@@ -11,10 +11,7 @@
 import { afterEach, describe, expect, test } from 'vitest';
 import { _resetForTests, init } from '../index.js';
 
-const wasmUrl = new URL(
-  '../generated/bridge-wasm.wasm',
-  import.meta.url,
-);
+const wasmUrl = new URL('../generated/bridge-wasm.wasm', import.meta.url);
 
 describe('runtime: explicit wasmUrl', () => {
   afterEach(() => {
@@ -22,12 +19,18 @@ describe('runtime: explicit wasmUrl', () => {
   });
 
   test('accepts a URL instance', async () => {
-    const dart = await init({ wasmUrl });
-    expect(dart.add(2, 3)).toBe(5);
+    const gg = await init({ wasmUrl });
+    expect(gg.version).toMatch(/^\d+\.\d+\.\d+/);
   });
 
   test('accepts a string', async () => {
-    const dart = await init({ wasmUrl: wasmUrl.href });
-    expect(dart.add(2, 3)).toBe(5);
+    const gg = await init({ wasmUrl: wasmUrl.href });
+    expect(gg.version).toMatch(/^\d+\.\d+\.\d+/);
+  });
+
+  test('is idempotent', async () => {
+    const first = await init({ wasmUrl });
+    const second = await init({ wasmUrl });
+    expect(second).toBe(first);
   });
 });

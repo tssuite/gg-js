@@ -6,4 +6,4 @@
 
 library;
 
-export 'src/foo.dart';
+export 'src/gg_js_version.dart';

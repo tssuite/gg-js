@@ -19,7 +19,6 @@ export default [
       'node_modules',
       '.git',
       'typescript/generated/',
-      'example/browser/main.ts',
     ],
   },
 
@@ -34,7 +33,11 @@ export default [
   // Documentation rules for the public TypeScript surface.
   {
     files: ['typescript/**/*.ts'],
-    ignores: ['typescript/test/**/*.ts', 'typescript/generated/**/*.ts'],
+    ignores: [
+      'typescript/test/**/*.ts',
+      'typescript/e2e/**/*.ts',
+      'typescript/generated/**/*.ts',
+    ],
     plugins: { tsdoc, jsdoc, tseslint },
     rules: {
       'tsdoc/syntax': 'error',

@@ -5,6 +5,7 @@
 // found in the LICENSE file in the root of this package.
 
 import { loadBridge, type RuntimeOptions } from './runtime.js';
+import type { GgHost } from './host.js';
 
 export {
   assertWasmGcSupported,
@@ -12,72 +13,156 @@ export {
   type WasmGcSupport,
 } from './compat.js';
 
+export {
+  EntityType,
+  type ConsoleHost,
+  type DirectoryEntry,
+  type FileSystemHost,
+  type GgHost,
+  type PlatformHost,
+  type ProcessHost,
+  type ProcessOutcome,
+  type PromptHost,
+  type RunOptions,
+} from './host.js';
+
+export {
+  createNodeHost,
+  nodePlatformToDart,
+  type NodeHostOptions,
+} from './host-node.js';
+
 // -----------------------------------------------------------------------------
-// Public TypeScript types — hand-written. These declare the JS-facing API
-// that the Dart side promises to deliver. `tsc --emitDeclarationOnly` turns
-// them into `dist/index.d.ts`.
+// The bridge surface. Hand-written, and matched on the Dart side by
+// `lib/src/main.dart`. `tsc --emitDeclarationOnly` turns it into
+// `dist/index.d.ts`.
 // -----------------------------------------------------------------------------
 
-/** A handle to a Dart-backed counter. */
-export interface Counter {
-  /** Current value. */
-  readonly value: number;
-  /** Increment by `by` (default 1) and return the new value. */
-  increment(by?: number): number;
-  /** Wait `delayMs` ms, then increment by `by` (default 1). */
-  incrementAsync(delayMs: number, by?: number): Promise<number>;
+/** The compiled `gg` command line. */
+export interface GgBridge {
+  /** The version of the `gg` command line inside this module. */
+  readonly version: string;
+  /** Installs the host gg runs on. Call before {@link GgBridge.run}. */
+  setHost(host: GgHost): void;
+  /** Removes the installed host. */
+  clearHost(): void;
+  /** Runs `gg` with `args` and resolves with the exit code. */
+  run(args: string[]): Promise<number>;
 }
 
-/** Input shape for `enrichPerson`. */
-export interface Person {
-  name: string;
-  age: number;
-}
-
-/** Output shape returned by `enrichPerson`. */
-export interface EnrichedPerson extends Person {
-  isAdult: boolean;
-}
-
-/** Output shape returned by `analyzeBytes`. */
-export interface ByteAnalysis {
-  byteCount: number;
-}
-
-/** The bridge surface exposed to JS/TS callers. */
-export interface DartBridge {
-  /** Add two integers. */
-  add(a: number, b: number): number;
-  /** Greet a name. */
-  greet(name: string): string;
-  /** Create a new counter starting at `initial` (default 0). */
-  createCounter(initial?: number): Counter;
-  /** Enrich a person object with a derived `isAdult` flag. */
-  enrichPerson(input: Person): EnrichedPerson;
-  /** Apply a JS callback to every entry of `items`. */
-  mapWithCallback(items: string[], callback: (item: string) => string): string[];
-  /** Count the bytes of a `Uint8Array` and return `{ byteCount }`. */
-  analyzeBytes(input: Uint8Array): ByteAnalysis;
-}
-
-/** Options for `init()`. */
+/** Options for {@link init}. */
 export type InitOptions = RuntimeOptions;
 
-let cached: DartBridge | undefined;
+/**
+ * The bridge as the Wasm module hands it over.
+ *
+ * Identical to {@link GgBridge}; the distinction exists only so
+ * {@link init} can wrap it.
+ */
+type RawBridge = GgBridge;
 
 /**
- * Load and initialize the Dart bridge.
+ * The bridge with its preconditions checked on the JavaScript side.
  *
- * Idempotent: repeated calls return the same instance.
- * @param options - Runtime options (target selection, wasm URL, …).
+ * A Dart exception crossing the Wasm boundary arrives in JS as an opaque
+ * `WebAssembly.Exception` — unreadable, and unusable in a `catch`. Anything
+ * that can be caught before the boundary therefore is.
  */
-export async function init(options: InitOptions = {}): Promise<DartBridge> {
+class GuardedBridge implements GgBridge {
+  /**
+   * Wraps the raw bridge.
+   * @param raw - The object the Wasm module published.
+   */
+  constructor(private readonly raw: RawBridge) {}
+
+  private hasHost = false;
+
+  /** The version of the `gg` command line inside this module. */
+  get version(): string {
+    return this.raw.version;
+  }
+
+  /**
+   * Installs the host gg runs on.
+   * @param host - Where gg gets its files, processes and console from.
+   */
+  setHost(host: GgHost): void {
+    this.raw.setHost(host);
+    this.hasHost = true;
+  }
+
+  /** Removes the installed host. */
+  clearHost(): void {
+    this.raw.clearHost();
+    this.hasHost = false;
+  }
+
+  /**
+   * Runs `gg` with `args`.
+   * @param args - The command line, without the leading `gg`.
+   * @returns The exit code gg finished with.
+   */
+  async run(args: string[]): Promise<number> {
+    if (!this.hasHost) {
+      throw new Error(
+        'gg-js: call setHost(...) before run(...). Without a host gg has ' +
+          'no file system, no processes and no console.',
+      );
+    }
+    return this.raw.run(args);
+  }
+}
+
+let cached: GgBridge | undefined;
+
+/**
+ * Loads the WebAssembly module holding the `gg` command line.
+ *
+ * Idempotent: repeated calls return the same instance. The returned bridge
+ * has no host yet — call {@link GgBridge.setHost} before running anything,
+ * or use {@link runGg}, which does it for you.
+ * @param options - Runtime options (the wasm URL, mostly).
+ * @returns The bridge handle.
+ */
+export async function init(options: InitOptions = {}): Promise<GgBridge> {
   if (cached) return cached;
-  cached = await loadBridge(options);
+  cached = new GuardedBridge(await loadBridge(options));
   return cached;
 }
 
-/** Reset the cached bridge — useful in tests. */
+/** Options for {@link runGg}. */
+export interface RunGgOptions extends InitOptions {
+  /**
+   * The host gg runs on.
+   *
+   * Defaults to `createNodeHost()`, which is what you want in Node. Pass
+   * your own to sandbox gg, to capture its output, or to run it against an
+   * in-memory file system.
+   */
+  host?: GgHost;
+}
+
+/**
+ * Runs `gg` with the given command line and returns its exit code.
+ *
+ * ```ts
+ * const code = await runGg(['do', 'ls', 'repos']);
+ * ```
+ * @param args - The command line, without the leading `gg`.
+ * @param options - The host to run on and the runtime options.
+ * @returns The exit code gg finished with.
+ */
+export async function runGg(
+  args: string[],
+  options: RunGgOptions = {},
+): Promise<number> {
+  const bridge = await init(options);
+  const { createNodeHost } = await import('./host-node.js');
+  bridge.setHost(options.host ?? createNodeHost());
+  return bridge.run(args);
+}
+
+/** Resets the cached bridge — useful in tests. */
 export function _resetForTests(): void {
   cached = undefined;
 }

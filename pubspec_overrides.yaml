@@ -4,15 +4,65 @@
 # change-refs-to-git-feature-branch and change-refs-to-pub-dev
 # remove it again.
 dependency_overrides:
-  gg_bridge_dart_side:
-    path: ../gg_bridge_dart_side
+  gg:
+    path: ../../ggsuite/gg
   gg_args:
     path: ../../ggsuite/gg_args
-  gg_log:
-    path: ../../ggsuite/gg_log
-  gg_console_colors:
-    path: ../../ggsuite/gg_console_colors
-  gg_process:
-    path: ../../ggsuite/gg_process
   gg_capture_print:
     path: ../../ggsuite/gg_capture_print
+  gg_changelog:
+    path: ../../ggsuite/gg_changelog
+  gg_console_colors:
+    path: ../../ggsuite/gg_console_colors
+  gg_direct_json:
+    path: ../../ggsuite/gg_direct_json
+  gg_git:
+    path: ../../ggsuite/gg_git
+  gg_hash:
+    path: ../../ggsuite/gg_hash
+  gg_is_flutter:
+    path: ../../ggsuite/gg_is_flutter
+  gg_is_github:
+    path: ../../ggsuite/gg_is_github
+  gg_lang:
+    path: ../../ggsuite/gg_lang
+  gg_local_package_dependencies:
+    path: ../../ggsuite/gg_local_package_dependencies
+  gg_localize_refs:
+    path: ../../ggsuite/gg_localize_refs
+  gg_log:
+    path: ../../ggsuite/gg_log
+  gg_merge:
+    path: ../../ggsuite/gg_merge
+  gg_multi:
+    path: ../../ggsuite/gg_multi
+  gg_multi_commit:
+    path: ../../ggsuite/gg_multi_commit
+  gg_multi_core:
+    path: ../../ggsuite/gg_multi_core
+  gg_multi_do_publish:
+    path: ../../ggsuite/gg_multi_do_publish
+  gg_multi_workspace:
+    path: ../../ggsuite/gg_multi_workspace
+  gg_one:
+    path: ../../ggsuite/gg_one
+  gg_one_commit:
+    path: ../../ggsuite/gg_one_commit
+  gg_one_core:
+    path: ../../ggsuite/gg_one_core
+  gg_one_do_publish:
+    path: ../../ggsuite/gg_one_do_publish
+  gg_one_merge:
+    path: ../../ggsuite/gg_one_merge
+  gg_process:
+    path: ../../ggsuite/gg_process
+  gg_project_root:
+    path: ../../ggsuite/gg_project_root
+  gg_publish:
+    path: ../../ggsuite/gg_publish
+  gg_status_printer:
+    path: ../../ggsuite/gg_status_printer
+  gg_test:
+    path: ../../ggsuite/gg_test
+  gg_version:
+    path: ../../ggsuite/gg_version

@@ -27,6 +27,7 @@
     "node_modules",
     "dist",
     "typescript/test/**",
+    "typescript/e2e/**",
     "typescript/generated/**"
   ]
 }
