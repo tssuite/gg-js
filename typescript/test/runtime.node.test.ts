@@ -33,10 +33,10 @@ describe('runtime: http wasmUrl', () => {
     const { port } = server.address() as AddressInfo;
 
     try {
-      const dart = await init({
+      const gg = await init({
         wasmUrl: `http://127.0.0.1:${port}/bridge-wasm.wasm`,
       });
-      expect(dart.add(2, 3)).toBe(5);
+      expect(gg.version).toMatch(/^\d+\.\d+\.\d+/);
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));

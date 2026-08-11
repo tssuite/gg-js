@@ -2,4 +2,4 @@
 // Kept in sync by test/gg_js_version.test.ts.
 
 /** The version of the `@tssuite/gg-js` package. */
-export const ggJsVersion = '1.0.2';
+export const ggJsVersion = '1.0.3';

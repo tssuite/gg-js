@@ -1,23 +1,54 @@
 # Changelog
 
-### Changed
-
-- Initial template scaffold.
-- Dart→JS+Wasm bridge with four illustrative patterns:
-function call, class with async methods, JSON exchange, JS callback into Dart.
-- Hand-typed TypeScript wrapper, declarations emitted via `tsc`.
-- Vitest in two modes: Node and Playwright/Chromium.
-- Browser (Vite) and Node CLI example apps.
-
 ## Unreleased
 
 ### Added
 
-- Add byte array example
+- The `gg` command line itself, compiled to WebAssembly. `npx @tssuite/gg-js
+  <args>` runs it; `bin` in package.json makes the binary available to
+  npm scripts as `gg-js`.
+- `createNodeHost()` — the file system, process, platform and console
+  callbacks gg needs, implemented on `node:fs`, `node:child_process` and
+  `process`. It tracks gg's working directory itself rather than moving the
+  Node process'.
+- `runGg(args, options)` and `init()` for driving gg from TypeScript, with
+  any `GgHost` — including one that is not a file system at all.
+- End-to-end tests that spawn the built binary as a real process against a
+  throwaway gg workspace with a git repository in it.
+
+- Started processes stream: `host.process.start` hands over a
+  `StartedProcess` while the program runs, so gg sees `dart test`'s output
+  line by line and can type into a program's stdin. Without it
+  `gg one can commit` read a passing suite as a failure.
+
+- `createNodeHost` supplies the interactive prompts, so the commands that
+  ask questions work. A numbered list and a line of input rather than the
+  native arrow-key list — `package:interact` needs `dart:ffi`. Pass
+  `prompts: false` to leave gg without them.
+
+- CI runs on Windows as well as Linux. The build scripts no longer reach
+  for `rm`, `cp` and `chmod`, the process fixtures no longer for `sh`,
+  `cat` and `sleep`, and batch wrappers are given the shell Node requires
+  for them.
+
+- The prompt callbacks are asynchronous, so the Node host reads through
+  `readline` rather than blocking on a file descriptor — which is what a
+  Windows console handle does not support.
 
 ### Changed
 
-- Initial project
+- The bridge is now `globalThis.ggBridge` with two methods, `setHost` and
+  `run`. The four interop demo patterns it carried before are gone; the
+  package is a tool now, not an example.
+- Preconditions are checked in TypeScript, so a misused bridge throws a
+  readable `Error` instead of an opaque `WebAssembly.Exception`.
+
+### Fixed
+
+- `globalThis.location` is installed before the module starts.
+  `package:path` reads `Uri.base` from it to decide between posix and
+  windows separators, and Node has no `location` — without this the first
+  path gg built trapped with `illegal cast`.
 - Ignore CHANGELOG.md for prettier
 - Update dart dependencies
 - Update dart and typescript dependencies

@@ -5,7 +5,8 @@
 // found in the LICENSE file in the root of this package.
 
 import { assertWasmGcSupported } from './compat.js';
-import type { DartBridge } from './index.js';
+import { ensureUriBase } from './uri-base.js';
+import type { GgBridge } from './index.js';
 
 /** Options for {@link loadBridge}. */
 export interface RuntimeOptions {
@@ -19,7 +20,7 @@ export interface RuntimeOptions {
 
 declare global {
   // populated by Dart's `main()` after the module is loaded
-  var dartBridge: DartBridge | undefined;
+  var ggBridge: GgBridge | undefined;
 }
 
 /* v8 ignore start — the short-circuit chain takes opposite paths in Node
@@ -38,7 +39,7 @@ const isNode =
  */
 export async function loadBridge(
   options: RuntimeOptions,
-): Promise<DartBridge> {
+): Promise<GgBridge> {
   // Fail fast with a clear, actionable message if the runtime is missing
   // Wasm-GC or JS-string builtins, rather than letting WebAssembly.compile
   // throw something opaque from inside the loader.
@@ -51,14 +52,20 @@ export async function loadBridge(
   const url = await resolveWasmUrl(options.wasmUrl);
   const response = await fetchWasm(url);
 
+  // `Uri.base` — and with it every path `package:path` builds — is read
+  // from `globalThis.location`. Node has none; give the module one before
+  // it starts. `createNodeHost()` points it at the real working directory
+  // right after. In a browser this is a no-op.
+  ensureUriBase();
+
   const compiled = await loader.compileStreaming(response);
   const instance = await compiled.instantiate({});
   instance.invokeMain();
 
-  const bridge = globalThis.dartBridge;
+  const bridge = globalThis.ggBridge;
   /* v8 ignore start — defensive: Dart's `main()` always sets this */
   if (!bridge) {
-    throw new Error('Dart Wasm module did not expose globalThis.dartBridge');
+    throw new Error('Dart Wasm module did not expose globalThis.ggBridge');
   }
   /* v8 ignore stop */
   return bridge;

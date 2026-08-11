@@ -1,304 +1,281 @@
 # Architecture
 
-This document captures the design of `gg_js` — what it
-is, why each layer exists, and the trade-offs that were made. It complements
-[README.md](README.md) (which is task-oriented: install, build, run).
+This document captures the design of `@tssuite/gg-js` — what it is, why
+each layer exists, and the trade-offs that were made. It complements
+[README.md](README.md), which is task-oriented: install, run, build.
 
 ## 1. Goal
 
-Provide a working, minimal example of how to take a Dart package and ship
-it on **npm** as a JavaScript module that
+Ship the [`gg`](https://github.com/ggsuite/gg) command line on npm, so that
 
-- runs in both **Node.js** and the **browser**,
-- is available as **JavaScript** _and_ **WebAssembly**,
-- has **hand-typed TypeScript declarations**, and
-- demonstrates the four most common interop patterns: a function call, a
-  class with sync + async methods, JSON exchange, and a JS callback invoked
-  by Dart.
+```bash
+npx @tssuite/gg-js do ls repos
+```
 
-The package doubles as a worked example; the bundled examples are
-illustrative, not load-bearing for production.
+works on a machine with Node and nothing else — no Dart SDK, no
+`dart pub global activate`, no per-platform binaries to build and host.
 
-## 2. Hybrid project layout
+The interesting part is not the packaging. It is that gg is a program made
+almost entirely of the things WebAssembly cannot do: reading files, running
+`git`, printing to a terminal.
 
-A single directory holds both a Dart package and an npm package. The two
-toolchains coexist at the root:
+## 2. The problem
+
+`dart compile wasm` produces a `dart:io` that compiles and then throws:
+
+```
+UnsupportedError: Unsupported operation: _Namespace
+UnsupportedError: Unsupported operation: Process.runSync
+UnsupportedError: Unsupported operation: Platform._operatingSystem
+UnsupportedError: Unsupported operation: StdIOUtils._getStdioOutputStream
+```
+
+A `gg` compiled to Wasm therefore loads fine and dies on the first thing it
+tries to do.
+
+The answer is not to reimplement gg. It is to make gg take its file system,
+its processes and its console from outside — which is a change to gg, not
+to this package. That work is documented in
+[gg/doc/wasm-host-delegates.md](https://github.com/ggsuite/gg/blob/main/doc/wasm-host-delegates.md);
+this package is the first consumer of it.
+
+## 3. Layout
 
 ```
 pubspec.yaml          ← Dart package descriptor (publish_to: none)
-package.json          ← npm package descriptor (publish to npm)
+package.json          ← npm package descriptor
 
-lib/                  ← Dart sources (consumed only by build.dart and Dart tests)
-test/                 ← Dart unit tests
+lib/src/main.dart     ← the Wasm entry point: globalThis.ggBridge
+lib/src/js_host.dart  ← JS object shapes ⇄ gg's GgHost
 
-typescript/           ← TypeScript sources (the npm-facing API)
+typescript/
+  host.ts             ← the host contract, as TypeScript types
+  host-node.ts        ← the host, implemented on node:fs / node:child_process
+  prompts-node.ts     ← the questions gg asks, asked from a Node terminal
+  uri-base.ts         ← globalThis.location for a module that has none
+  runtime.ts          ← loads and instantiates the .wasm
+  compat.ts           ← Wasm-GC feature probe
+  index.ts            ← the public API: init(), runGg()
+  cli.ts              ← the `gg-js` executable
   generated/          ← gitignored output of build.dart
+  test/               ← vitest, in process
+  e2e/                ← vitest, spawning the built binary
 
-dist/                 ← gitignored npm artifact (output of tsc + vite build)
-
-example/              ← runnable demo apps (browser + Node CLI)
-scripts/              ← Dart helper scripts (sync_version.dart, …)
-build.dart            ← orchestrates dart compile js + dart compile wasm
+bin/gg-js.mjs         ← the published shebang wrapper
+dist/                 ← gitignored npm artifact
+build.dart            ← drives `dart compile wasm`
 ```
 
-The two ecosystems do not share lockfiles or dependency resolution. They
-share only the root directory, the version number (synced from `pubspec.yaml`
-into `package.json` by `scripts/sync_version.dart`), and the build pipeline.
+## 4. The bridge
 
-## 3. Pipeline overview
+### 4.1 Two methods
 
-```
-                  ┌───────────────────────────────┐
-                  │  pubspec.yaml (version master)│
-                  └──────────────┬────────────────┘
-                                 │ scripts/sync_version.dart
-                                 ▼
-                          package.json
-                                 │
-       ┌─────────────────────────┼────────────────────────────┐
-       │                         │                            │
-       ▼                         ▼                            ▼
-  dart compile js          dart compile wasm             tsc + vite build
-  ─────────────────        ────────────────────         ──────────────────
-  lib/src/main.dart   →    lib/src/main.dart      →     typescript/index.ts
-  typescript/generated/    typescript/generated/        dist/index.js
-    bridge-js.ts             bridge-wasm.ts             dist/index.browser.js
-                             bridge-wasm.wasm           dist/index.node.js
-                                                        dist/index.d.ts
-```
-
-`pnpm run build` runs all four steps in order. The result is `dist/`, ready
-for `pnpm publish`.
-
-## 4. The Dart side
-
-### 4.1 Pure-Dart library
-
-`lib/src/example_*.dart` implement the actual logic in **plain, idiomatic
-Dart**. They have no `dart:js_interop` imports and are unit-testable from
-Dart via `package:test` (see `test/example_*_test.dart`). This separation
-matters: it lets you write and debug the domain logic without involving
-the bridge at all.
-
-### 4.2 The bridge: `lib/src/main.dart`
-
-The bridge is a thin adapter. It depends on `dart:js_interop` and
-`dart:js_interop_unsafe` and does three things:
-
-1. **Marks a class with `@JSExport`** (`DartBridge`). Every public method
-   becomes a method on the resulting JS object.
-2. **Converts at the boundary** — `String` ↔ `JSString`, `List<String>` ↔
-   `JSArray<JSString>`, `Future<int>` ↔ `JSPromise<JSNumber>`, JS function
-   handles invoked via `JSFunction.callAsFunction(...)`.
-3. **Publishes** the bridge to `globalThis.dartBridge` using
-   `globalContext.setProperty(...)` from `dart:js_interop_unsafe`.
-
-A single `_guard()` helper wraps every public method to convert Dart
-exceptions into JS-throwable error messages. Without it, JS callers see
-opaque interop objects.
-
-`dart compile js` and `dart compile wasm` both run `main()` exactly once
-when the module is loaded; that is where the global assignment happens.
-
-### 4.3 Why `@JSExport` and not `@JS() external set …`?
-
-The older pattern declares
-externally-settable globals:
+`lib/src/main.dart` publishes one object as `globalThis.ggBridge`, with a
+deliberately tiny surface:
 
 ```dart
-@JS() external set foo(JSFunction f);
-void main() { foo = _foo.toJS; }
+void setHost(JSObject callbacks);
+JSPromise<JSNumber> run(JSArray<JSString> args);
 ```
 
-`@JSExport` + `createJSInteropWrapper` is the **currently recommended**
-pattern. It yields a structured object, supports classes and inheritance,
-and keeps the JS surface explicit in one place. New code should prefer it.
+`setHost` converts the JavaScript callbacks into gg's `GgHost` and installs
+it; `run` hands gg a command line and resolves with the exit code. There is
+no third method, and there is no gg-specific API on the JS side: gg's
+interface _is_ its command line, and that is what the bridge exposes.
 
-## 5. Building
+### 4.2 Everything is a plain JS object
 
-`build.dart` is a small driver around a single `Process.start` call. It
+`lib/src/js_host.dart` describes the host with `dart:js_interop` extension
+types — zero-cost views onto plain JS objects. Nothing is serialised at the
+boundary except the byte arrays, which are shared rather than copied.
 
-- compiles `lib/src/main.dart` to `typescript/generated/bridge-wasm.wasm`
-  with `dart compile wasm`, and wraps the accompanying `.mjs` loader in
-  `typescript/generated/bridge-wasm.ts` (TypeScript-importable, headered
-  with `// @ts-nocheck` because the generated code is not typed),
-- aborts on a failed compilation (`exit($code)`),
-- supports `--debug` (`-O0` + source maps) and `--clean` (wipe `generated/`
-  beforehand).
+Two conversions are worth naming:
 
-`dart compile js` is not produced. The package targets Wasm only, since
-dart2js' interop has notable runtime quirks (`Future.toJS`, `List.toJS`)
-that the Wasm path does not exhibit and that this bridge should not have
-to apologise for.
+- **Errors.** A JS exception arriving in Dart is an opaque object, and gg's
+  `on FileSystemException` handlers would not catch it. The file system
+  callbacks are wrapped so a failing `fs.readFileSync` surfaces as the
+  `FileSystemException` gg expects.
+- **Environment.** Handed over as `[[name, value], …]` rather than an
+  object, so Dart never has to enumerate JS properties.
 
-Generated files are **gitignored** on purpose. CI rebuilds them; humans
-build them locally. This keeps PR diffs small and avoids committing
-multi-megabyte minified blobs.
+### 4.3 Synchronous callbacks
 
-## 6. The TypeScript wrapper
+Every file system callback is synchronous. This is not a simplification —
+it is forced: gg uses `dart:io`'s `…Sync` APIs throughout, and those cannot
+await a promise. Node answers all of them synchronously through `node:fs`,
+and the asynchronous `dart:io` APIs are served from the same callbacks.
 
-### 6.1 Public API: `typescript/index.ts`
+Process execution is asynchronous on the Dart side (gg awaits every process
+it starts) but `spawnSync` on the Node side, which keeps gg's own output
+and the child's output in the order the user expects.
 
-This is the hand-written, hand-typed face of the library. It declares the
-shape of the bridge (`interface DartBridge`, `interface Counter`, …) and
-exposes a single async entry point:
+### 4.4 `print` is captured
 
-```ts
-export async function init(options?: InitOptions): Promise<DartBridge>;
-```
+`print` inside a Wasm module goes straight to the JS console, bypassing the
+host and any redirection the embedder set up. `run` therefore executes gg
+inside a `Zone` whose `print` handler routes to the host console, the same
+way `ggLog` output goes.
 
-`init()` is **idempotent** — repeated calls return the same instance. This
-is the agreed pattern for explicit Wasm initialization: it makes the
-async-load step visible at the call site rather than hiding it behind a
-lazy singleton inside every method.
+## 5. `Uri.base`, or: the bug that ate an afternoon
 
-### 6.2 Runtime loader: `typescript/runtime.ts`
+`package:path` — which the entire gg suite is built on — reads `Uri.base`
+before it does anything else, twice:
 
-`loadBridge()` loads the compiled Wasm module. Before touching
-`WebAssembly.compile` it calls `assertWasmGcSupported()` from
-[`compat.ts`](typescript/compat.ts),
-which performs two synchronous feature probes (Wasm-GC struct types and
-the JS-string builtins) and throws a user-facing error with the list of
-supported environments when either is missing.
+- `Style.platform` compares it against a `file:` URI to decide between
+  posix and windows separators — together with `process.platform`, which
+  dart2wasm consults for `Uri._isWindows`. It is a `static final`, so the
+  first read wins for the lifetime of the module.
+- `path.current`, which `p.absolute()` resolves against, is `Uri.base`
+  turned back into a file path.
 
-Node detection is a one-liner against `process.versions.node`. In Node we
-read the `.wasm` file directly via `node:fs/promises`. In the browser the
-caller must supply a `wasmUrl` (typically via a bundler import such as
-Vite's `?url` suffix); without a bundler, `new URL('./generated/bridge-wasm.wasm', import.meta.url)`
-serves as the default and works in both runtimes.
+A Wasm build answers `Uri.base` from `globalThis.location.href`. Node has
+no `location`, so the first path gg builds traps with `illegal cast`.
 
-### 6.3 `.d.ts` strategy
+`typescript/uri-base.ts` installs one, and `createNodeHost` keeps it
+pointed at gg's working directory — including when gg changes it. The
+trailing slash matters: `package:path` reads a `file:` URI without one as
+»a file, so we must be in a browser« and switches to URL-style paths.
 
-The user-facing declarations are produced by **`tsc --emitDeclarationOnly`**
-from the typed `index.ts`. This avoids drift between implementation and
-types (a hand-written `.d.ts` next to plain JS would have to be kept in
-sync manually) and is no less "manual" — a human writes the types in
-TypeScript syntax; nothing infers them from Dart annotations.
+This is also why the package targets Node rather than the browser. In a
+browser `location` is real, read-only and an `http:` URL, and gg's paths
+would become URLs.
 
-### 6.4 Browser vs Node entry points
+## 6. The host
 
-`package.json` declares an `exports` map:
+`typescript/host.ts` is the contract; `typescript/host-node.ts` is the one
+implementation this package ships. Three decisions in it are not obvious:
 
-```json
-"exports": {
-  ".": {
-    "types":   "./dist/index.d.ts",
-    "browser": "./dist/index.browser.js",
-    "node":    "./dist/index.node.js",
-    "default": "./dist/index.js"
-  },
-  "./wasm": "./dist/bridge-wasm.wasm"
-}
-```
+- **gg's working directory is not the process' working directory.** gg
+  walks in and out of repositories constantly. `process.chdir` would move
+  the surrounding program's cwd with it, so the host tracks its own and
+  resolves relative paths against that.
+- **A missing executable is a failed run, not an exception.** gg reads the
+  stderr of a command that failed; `ENOENT` is reported as exit code 127
+  with the message on stderr, the way a shell would.
+- **Batch wrappers get a shell.** Node refuses to spawn a `.bat` or
+  `.cmd` without one since the fix for CVE-2024-27980, and gg reaches for
+  `pana.bat` and `flutter.bat` on Windows without asking for a shell — a
+  native Dart build does not need one. `needsShell` decides that here,
+  where the platform is known, instead of spreading a Node detail through
+  the gg suite.
+- **The shell is built, not switched on.** Node's `shell: true` joins the
+  arguments with spaces and escapes nothing, so a commit message arrived
+  as several arguments and a `;` started a second command — the bug
+  `DEP0190` warns about. `spawnCommand` therefore rewrites the call the
+  way `dart:io`'s `_getShellArguments` does: single-quoted words after
+  `/bin/sh -c`, an argument vector after `cmd.exe /c` on Windows. Both
+  spellings were measured against a native `Process.run`, down to the 127
+  a shell reports when the executable is itself a command line.
+- **`start` only detaches when asked.** gg uses `Process.start` for two
+  different things: reading a program's output, and launching an editor
+  that should outlive gg. Only the second gets a detached child.
+- **Prompts are asynchronous; the file system is not.** The file
+  callbacks have to be synchronous — `dart:io`'s `…Sync` APIs cannot
+  await — and a prompt does not, because every caller in gg already
+  awaits it. So `prompts-node.ts` reads through `readline` instead of
+  blocking on a file descriptor, which is what makes it work on Windows —
+  and gives the text input real line editing for free.
+- **readline owns the prompt string.** `askOnTerminal` passes the question
+  to `rl.question` rather than writing it first, because readline places
+  the cursor relative to a prompt it knows about; writing it separately
+  leaves every cursor key off by the width of the question. Its
+  `terminal` flag follows `input.isTTY`: on a terminal that turns the
+  line editing on, and on a pipe it stays off, where raw mode would only
+  garble the echo.
+- **The editor is seeded, not hinted.** `rl.write(initialText)` right
+  after `rl.question` puts gg's proposal into the buffer, which is what
+  interact's `Input` does with the same argument — the message is there
+  to be changed, and an untouched return accepts it. Only on a terminal:
+  with `terminal: false` `rl.write` feeds the interface as _input_, so it
+  would prepend itself to the piped answer. The pipe therefore keeps the
+  bracketed suggestion.
+- **The selection list is drawn by hand.** `chooseByArrows` takes stdin
+  into raw mode, reads `keypress` events and redraws the list in place
+  (`\x1b[nA` back over it, erase, rewrite) — the small TUI
+  `package:interact` provides natively. It restores raw mode and the
+  cursor in a `finally`, because leaving either behind would break the
+  terminal for everything the user types afterwards, and it reads ctrl-c
+  itself since raw mode swallows the interrupt. `chooseByNumber` is the
+  fallback wherever there is no terminal to draw on.
+- **A started process buffers until Dart listens.** `spawn` returns and
+  Dart attaches its listeners one microtask later — a fast program can be
+  done by then. `NodeStartedProcess` therefore collects output from the
+  moment the child exists and replays it when the listener arrives.
+  Without that, gg reads an empty test run, which it reports as a
+  failure.
 
-Both `index.browser.ts` and `index.node.ts` are thin re-exports of
-`index.ts` today; the split exists so that consumers and bundlers can pick
-the right variant when we eventually need environment-specific tweaks.
+## 7. The executable
 
-## 7. The four illustrated patterns
+`bin/gg-js.mjs` is a hand-written two-line file that imports the bundled
+`dist/cli.js`. It exists as a source file rather than a build artifact so
+the shebang survives bundling.
 
-| #   | Pattern               | Dart side                                                                                                                  | JS side                                                                                              | Demonstrates                                                                                                   |
-| --- | --------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| 1   | Function call         | `add`, `greet` in `example_function.dart`                                                                                  | `dart.add(2, 3)`                                                                                     | Primitive-in, primitive-out: the simplest possible crossing                                                    |
-| 2   | Class + async method  | `Counter` in `example_class.dart`                                                                                          | `dart.createCounter(10)` returns a JS object whose `incrementAsync(...)` returns a `Promise<number>` | `createJSInteropWrapper` on instances; `Future → JSPromise`                                                    |
-| 3   | Typed object exchange | `enrichPerson(Person)` in `example_json.dart`; `JSObject` extension types `_PersonJs` / `_EnrichedPersonJs` in `main.dart` | `dart.enrichPerson({ name, age })` → `{ name, age, isAdult }`                                        | Zero-cost typed access to JS object fields via `dart:js_interop` extension types — no `JSON.stringify`/`parse` |
-| 4   | JS callback into Dart | `mapWithCallback<T,R>` in `example_callback.dart`                                                                          | `dart.mapWithCallback(items, fn)` — Dart invokes `fn` per element                                    | `JSFunction.callAsFunction(...)` and per-element `JSString ↔ String`                                           |
+`cli.ts` loads the module, installs a Node host, runs the arguments and
+sets `process.exitCode`. Everything interesting happens on the other side
+of the bridge.
 
-Each pattern is exercised in three places: a Dart unit test (against the
-pure-Dart logic), a TypeScript example file under `typescript/examples/`,
-and a Vitest spec that runs through the actual built bridge.
+## 8. Testing
 
-## 8. Testing strategy
+Three layers, deliberately separate:
 
-Two layers, intentionally separate:
+| Project   | What it proves                                                                                                 |
+| --------- | -------------------------------------------------------------------------------------------------------------- |
+| `node`    | the host does what `dart:io` expects, against a real temp directory; and gg runs through the bridge in process |
+| `e2e`     | `dist/gg-js.mjs` works when spawned as a process, the way npx runs it                                          |
+| `browser` | Chromium really has Wasm-GC and the JS-string builtins                                                         |
 
-1. **Dart tests** under `test/` validate `lib/src/example_*.dart` directly.
-   No interop involved. Fast and easy to debug.
-2. **Vitest tests** under `typescript/test/` validate the _bridge_. They
-   run twice:
-   - `project: 'node'` — `environment: 'node'`, loads `.wasm` from disk.
-   - `project: 'browser'` — Vitest Browser Mode with Playwright/Chromium
-     headless, loads `.wasm` via `fetch`.
+The e2e tests build a throwaway gg workspace — an ocean, a ticket, a git
+repository — and assert on things only the real stack can produce: a
+directory walk that finds `.ocean`, a `git status` that comes back clean,
+an EOL warning that appears exactly when `.gitattributes` is removed.
+Nothing is stubbed.
 
-The browser project uses Playwright (not happy-dom or jsdom) because
-those DOM shims do not fully support **WebAssembly GC**, which `dart
-compile wasm` requires. Testing in a real browser engine is the only way
-to validate the Wasm path honestly.
+The in-process tests do what the e2e tests cannot: hand gg a host built out
+of a `Map` and watch it find a `pubspec.yaml` that exists nowhere on disk.
 
-## 9. Examples (`example/`)
+## 9. Distribution
 
-Two consumers under `example/` show how a real downstream project
-integrates the bridge:
+- `package.json` declares `bin: { "gg-js": "./dist/gg-js.mjs" }`, which is
+  what makes `npx @tssuite/gg-js` work.
+- `files: ["dist", "README.md", "LICENSE"]` — the tarball carries build
+  artifacts only.
+- `prepublishOnly` runs the full build and the full test suite.
+- The version is synced from `pubspec.yaml` into `package.json`;
+  `pubspec.yaml` is the source of truth.
 
-- `example/browser/` — a Vite dev server. `import wasmUrl from
-'…/bridge-wasm.wasm?url'` lets Vite copy the `.wasm` next to the
-  served JS, which is the idiomatic bundler pattern.
-- `example/node-cli/` — a plain Node script using `await` at top level.
+## 10. Decisions and trade-offs
 
-These exist _because_ shipping a Dart/Wasm library and shipping a
-consumable Dart/Wasm library are different things. The bundler-integration
-story is what this package is really documenting.
+| Decision             | Choice                          | Why                                                                                         |
+| -------------------- | ------------------------------- | ------------------------------------------------------------------------------------------- |
+| Where the host lives | in `gg`, not here               | Every gg package needs it; an embedder-specific patch would not survive the next gg release |
+| Interop style        | `dart:js_interop` + `@JSExport` | Currently recommended; keeps the JS surface explicit in one place                           |
+| Compile target       | `dart compile wasm` only        | dart2js' `Future.toJS` / `List.toJS` quirks are not worth apologising for                   |
+| fs callbacks         | synchronous                     | `dart:io`'s `…Sync` APIs cannot await                                                       |
+| Process execution    | `spawnSync`                     | Keeps gg's output and the child's output in order                                           |
+| Preconditions        | checked in TypeScript           | A Dart throw crosses the boundary as an opaque `WebAssembly.Exception`                      |
+| Runtime              | Node                            | `Uri.base` in a browser makes `package:path` treat paths as URLs                            |
+| Generated artifacts  | gitignored                      | Keeps diffs small; CI rebuilds                                                              |
 
-## 10. Distribution
+## 11. What this package is **not**
 
-- `package.json` has `"files": ["dist", "README.md", "LICENSE"]`. The
-  `pnpm publish` tarball therefore contains only build artifacts — never
-  `lib/`, `node_modules/`, or `.dart_tool/`.
-- `prepublishOnly` runs `pnpm run build && pnpm run test`. Forgetting to
-  rebuild before publishing is impossible.
-- Publishing is **manual** (`pnpm publish`), not automated through CI.
-  CI's job is to verify; humans cut releases.
+- Not a reimplementation of gg. It contains no gg logic at all — the Dart
+  side is 300 lines of conversion.
+- Not a thin shim. It ships the full Dart runtime plus gg: about 1.2 MB of
+  `.wasm`.
+- Not a browser package, yet. See §5.
 
-## 11. CI
+## 12. Future work
 
-`.github/workflows/ci.yaml` runs on push and PR. It
-
-- caches `~/.pub-cache` keyed on `pubspec.yaml`,
-- caches `~/.local/share/pnpm/store` keyed on `pnpm-lock.yaml`,
-- sets up Dart stable, Node 22, pnpm,
-- installs Playwright with `--with-deps chromium`,
-- runs `dart test`, then `pnpm run build`, then `pnpm run test:vitest`,
-  then `pnpm run lint`.
-
-## 12. Decisions and trade-offs
-
-A summary of the explicit calls made when designing this package:
-
-| Decision                   | Choice                                     | Why                                                                                                             |
-| -------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| Interop style              | `dart:js_interop` + `@JSExport`            | Currently recommended Dart pattern; structured surface; future-proof                                            |
-| Compile target             | `dart compile wasm` only                   | Wasm-GC has clean interop semantics; dart2js' `Future.toJS` and `List.toJS` quirks made the JS bundle a footgun |
-| Runtime                    | Node and browser                           | Both ship from the same package; `exports`-map dispatches                                                       |
-| `.d.ts` source             | Generated by `tsc` from a typed `index.ts` | Avoids drift; "manual" stays true at the human authoring level                                                  |
-| Generated artifacts in git | Gitignored                                 | Keeps diffs small; CI rebuilds                                                                                  |
-| Browser test runtime       | Vitest Browser Mode (Playwright/Chromium)  | happy-dom/jsdom cannot run Wasm-GC honestly                                                                     |
-| Version source of truth    | `pubspec.yaml`                             | Dart package metadata is authoritative; sync script writes `package.json`                                       |
-| Publishing                 | Manual `pnpm publish`                      | CI verifies, humans release                                                                                     |
-| Worker / isolate example   | Deliberately omitted (for now)             | Not "Dart isolates"; would be Web-Worker plumbing instead — separate concern                                    |
-
-## 13. What this package is **not**
-
-- Not a build of Dart Flutter code to JS.
-- Not a thin shim — it ships the full Dart-to-JS / Dart-to-Wasm runtime
-  per bundle, which is in the **few hundred KB range**. For a `add(a, b)`
-  utility this is laughably oversized; the value of this approach is in
-  reusing **substantial existing Dart code** on the web.
-- Not a monorepo. One Dart package + one npm package coexist; pnpm
-  workspaces are not used.
-- Not opinionated about state management, frameworks, or UI. The bridge
-  is the only thing here.
-
-## 14. Future work
-
-Topics that were discussed and deliberately deferred:
-
-- **Web Worker / `worker_threads` example** to demonstrate offloading
-  heavy Dart computation. Requires a separate worker entry compiled from
-  a different Dart file plus `postMessage` plumbing.
-- **Custom bundler resolvers** for the `.wasm` file (esbuild, Webpack 5,
-  Rollup direct). Vite is covered via `?url`.
-- **Type-stripped published bundle** — currently `tsc` emits `.js` + `.d.ts`
-  and `vite build` produces a friendlier ESM bundle; this could be
-  simplified or rebalanced.
-- **Source-map quality for Wasm** — works partially in Chromium today,
-  not at all in some other engines. Marked as a caveat in the README.
+- **`stdin.readLineSync()` on Windows.** The prompts no longer need a
+  blocking read, but gg's interactive publish flow calls `dart:io`'s
+  `stdin.readLineSync()` directly, and that one cannot be anything but
+  synchronous. It still goes through `fs.readSync` on descriptor 0, which
+  a Windows console handle may not answer.
+- **An arrow-key selector.** The asynchronous contract leaves room for a
+  real TUI prompt on the JS side without touching the contract again.
+- **An RxJS entry point** over the callback protocol, for consumers who
+  would rather compose gg's output as an `Observable` than register a
+  callback. The protocol is deliberately callback-shaped: an `Observable`
+  has to be decomposed into `next`/`error`/`complete` functions to cross
+  the Wasm boundary anyway, so putting RxJS underneath would cost a
+  dependency without removing any interop code.

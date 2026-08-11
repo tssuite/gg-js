@@ -25,13 +25,26 @@ export default defineConfig({
             'typescript/test/**/*.browser.test.ts',
             'node_modules/**',
           ],
+          testTimeout: 120_000,
+        },
+      },
+      {
+        test: {
+          name: 'e2e',
+          environment: 'node',
+          include: ['typescript/e2e/**/*.e2e.test.ts'],
+          // Each case spawns a fresh Node process that compiles a 1.3 MB
+          // Wasm module before it does anything, and one of them runs a
+          // whole `dart test` suite with coverage on top.
+          testTimeout: 300_000,
+          hookTimeout: 300_000,
         },
       },
       {
         test: {
           name: 'browser',
-          include: ['typescript/test/**/*.test.ts'],
-          exclude: ['typescript/test/**/*.node.test.ts', 'node_modules/**'],
+          include: ['typescript/test/**/*.browser.test.ts'],
+          exclude: ['node_modules/**'],
           browser: {
             enabled: true,
             provider: playwright(),
@@ -50,8 +63,11 @@ export default defineConfig({
         'typescript/index.browser.ts',
         'typescript/index.node.ts',
         'typescript/test/**',
+        'typescript/e2e/**',
         'typescript/generated/**',
-        'typescript/examples/**',
+        // The executable's own process wiring is covered by the e2e tests,
+        // which run it as a real binary rather than importing it.
+        'typescript/cli.ts',
       ],
       thresholds: {
         statements: 100,

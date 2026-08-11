@@ -1,118 +1,167 @@
-# gg_js
+# @tssuite/gg-js
 
-Bridge exposing a Dart package as a WebAssembly module — published to npm,
-consumed from Node or the browser, with hand-typed TypeScript declarations.
-
-These three projects demonstrate a complete dart - bridge - typescript chain:
-
-1. https://github.com/tssuite/gg_bridge_dart_side
-2. https://github.com/tssuite/gg_js
-3. https://github.com/tssuite/gg_bridge_typescript_side
-
-This is intentionally a **single hybrid project**: one `pubspec.yaml` and one
-`package.json` in the same root. `pubspec.yaml` is the source of truth for
-the version; `scripts/sync_version.dart` copies it into `package.json`
-before each build.
-
-## Layout
-
-```
-.
-├── pubspec.yaml            # Dart package (publish_to: none)
-├── package.json            # npm package
-├── build.dart              # compiles lib/src/main.dart → JS + Wasm
-├── lib/                    # Dart sources
-│   ├── gg_js.dart
-│   └── src/
-│       ├── main.dart           # @JSExport bridge to JS
-│       └── foo.dart
-├── test/                   # Dart unit tests
-├── typescript/             # TypeScript wrapper
-│   ├── index.ts                # public typed API
-│   ├── runtime.ts              # Wasm / JS loader
-│   ├── examples/               # one .ts per illustrated pattern
-│   ├── test/                   # Vitest specs (node + browser)
-│   └── generated/              # gitignored — populated by build.dart
-├── example/
-│   ├── browser/                # Vite dev-server demo
-│   └── node-cli/               # Node CLI demo
-└── scripts/sync_version.dart   # pubspec.yaml → package.json
-```
-
-## Prerequisites
-
-- Dart SDK ≥ 3.11
-- Node.js ≥ 22 (Wasm-GC is required)
-- pnpm
-
-## Build & test
+The [`gg`](https://github.com/ggsuite/gg) command line — the tool that
+drives commits, reviews and releases across all repositories of a ticket —
+compiled to WebAssembly and published on npm.
 
 ```bash
-dart pub get
+npx @tssuite/gg-js do ls repos
+```
+
+No Dart SDK, no `dart pub global activate`. Node 22+ is enough.
+
+## Install
+
+Run it straight from npm:
+
+```bash
+npx @tssuite/gg-js --help
+```
+
+…or put it in a project so everyone working on it gets the same version:
+
+```bash
+pnpm add -D @tssuite/gg-js
+```
+
+which makes `gg-js` available to your scripts:
+
+```json
+{
+  "scripts": {
+    "check": "gg-js one can commit"
+  }
+}
+```
+
+## What works
+
+Everything the native `gg` does, with the same arguments and the same
+output — the file system and the programs gg starts are handed to it by
+Node:
+
+```bash
+npx @tssuite/gg-js --version
+npx @tssuite/gg-js --help
+npx @tssuite/gg-js do ls repos
+npx @tssuite/gg-js do ls tickets
+npx @tssuite/gg-js one did commit
+```
+
+`gg one can commit` runs the real checks — `dart analyze`, `dart format`
+and `dart test` with coverage — and reports what the native gg reports.
+
+Two things behave differently from the native executable — see
+[Limitations](#limitations).
+
+## Using it from TypeScript
+
+The package is a library as well as a binary. `runGg` loads the module,
+gives it a Node host and runs a command line:
+
+```ts
+import { runGg } from '@tssuite/gg-js';
+
+const exitCode = await runGg(['do', 'ls', 'repos']);
+```
+
+To capture the output instead of printing it, build the host yourself:
+
+```ts
+import { createNodeHost, init } from '@tssuite/gg-js';
+
+const output: string[] = [];
+const gg = await init();
+
+gg.setHost(
+  createNodeHost({
+    workingDirectory: '/path/to/workspace',
+    onStdout: (text) => output.push(text),
+    onStderr: (text) => output.push(text),
+  }),
+);
+
+const exitCode = await gg.run(['do', 'ls', 'repos']);
+console.log(output.join(''));
+```
+
+`createNodeHost` never touches the surrounding Node process: gg's working
+directory is tracked inside the host, so `process.chdir` is never called.
+
+### Running gg on something that is not a disk
+
+`setHost` takes any object implementing `GgHost` — file system, processes,
+platform and console. Nothing in gg knows where its files come from, so a
+host backed by a map works as well as one backed by `node:fs`:
+
+```ts
+import { EntityType, type GgHost } from '@tssuite/gg-js';
+
+const files = new Map<string, string>([['/work/pubspec.yaml', 'name: demo']]);
+
+const host: GgHost = {
+  fs: {
+    typeOf: (p) => (files.has(p) ? EntityType.File : EntityType.NotFound),
+    readBytes: (p) => new TextEncoder().encode(files.get(p) ?? ''),
+    // …the rest of FileSystemHost
+  },
+  // …process, platform, console
+};
+```
+
+That is how gg is tested, and how you would sandbox it.
+
+## Limitations
+
+- **Interactive prompts are rebuilt, not borrowed.** The native gg draws
+  them with `package:interact`, which needs `dart:ffi` — something
+  WebAssembly does not have. They are rebuilt on `node:readline` here and
+  behave the same: the selection lists are walked with the arrow keys,
+  and the message editors start with gg's proposal in the buffer, ready
+  to be edited. Away from a terminal — a pipe, CI — there is nothing to
+  draw on, so a list falls back to numbered choices and an editor to a
+  suggestion in brackets that an empty answer keeps. Pass
+  `prompts: false` to `createNodeHost` to turn them off entirely, and gg
+  refuses the interactive commands instead.
+- **Node only, for now.** The module loads in a browser, but
+  `package:path` derives its path style from the page URL and would treat
+  gg's paths as URLs.
+- **Windows is new.** CI runs there now, and the known Windows-specific
+  traps are handled: `package:path` picks the Windows style, batch
+  wrappers like `pana.bat` are given the shell Node requires, and the
+  prompts read through `readline` rather than blocking on a console
+  handle — which is also what gives them their line editing. What remains unproven is `dart:io`'s own `stdin.readLineSync()`,
+  which gg uses in the interactive publish flow and which cannot be
+  anything but a synchronous read.
+
+## Requirements
+
+Node 22 or newer, on a runtime with WebAssembly-GC and the JS-string
+builtins. `init()` probes for both and throws a readable error if either is
+missing, rather than failing inside the loader.
+
+## Building from source
+
+```bash
 pnpm install
-
-pnpm run build      # sync version, compile Dart→JS+Wasm, emit .d.ts via tsc, bundle via Vite
-pnpm test           # Dart tests, then Vitest in Node + headless Chromium
+pnpm run build     # dart compile wasm + tsc + vite
+pnpm test          # dart tests, vitest, e2e, lint
 ```
 
-Useful targeted scripts:
+`pnpm run build:dart:debug` produces an unoptimised module with source maps
+when a stack trace out of the Wasm side needs reading.
 
-```bash
-pnpm run build:dart        # only the Dart→JS+Wasm step
-pnpm run build:dart:debug  # unoptimized + source maps
-pnpm run test:node         # Vitest, Node only
-pnpm run test:browser      # Vitest, Playwright/Chromium only
-pnpm run clean             # remove dist/ and typescript/generated/
-```
+## How it works
 
-## Run the examples
+`gg` is a Dart program, and a Dart program compiled to WebAssembly has no
+file system, no way to start a process and no terminal. gg therefore takes
+all of that as a set of callbacks, and this package supplies them from
+Node.
 
-```bash
-pnpm run example:browser   # http://localhost:5174 — exercises all four patterns
-pnpm run example:node      # CLI — exercises the same patterns from Node
-```
-
-See [`example/`](example/) for the bundler integration details.
-
-## The five illustrated patterns
-
-| #   | Pattern               | Dart side                                                                           | JS side                                                                           |
-| --- | --------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| 1   | Function call         | `add(int, int)` in `example_function.dart`                                          | `dart.add(a, b)`                                                                  |
-| 2   | Class + async method  | `Counter` in `example_class.dart`                                                   | `dart.createCounter()` → handle with `incrementAsync` returning `Promise<number>` |
-| 3   | Typed object exchange | `enrichPerson` in `example_json.dart` (+ `JSObject` extension types in `main.dart`) | `dart.enrichPerson({ name, age })` — returns `{ name, age, isAdult }`             |
-| 4   | JS callback into Dart | `mapWithCallback` in `example_callback.dart`                                        | `dart.mapWithCallback(items, fn)` — Dart invokes `fn` per element                 |
-| 5   | Byte array exchange   | `analyzeBytes` in `example_bytes.dart` (`Uint8List` from a JS `Uint8Array`)         | `dart.analyzeBytes(new Uint8Array([…]))` — returns `{ byteCount }`                |
-
-Each pattern has a Dart unit test, a TypeScript example file, and a Vitest
-spec that runs in both Node and a real Chromium browser.
-
-## Publishing
-
-```bash
-pnpm publish
-```
-
-`prepublishOnly` runs the full build and test suite first. The `files`
-allow-list in `package.json` ensures only `dist/`, `README.md`, and
-`LICENSE` are shipped — Dart sources, `.dart_tool/`, `node_modules/`, and
-the bridge generator stay out of the tarball.
-
-## Bundle-size note
-
-The minimum bundle produced by `dart compile js` / `dart compile wasm` is
-in the **few hundred kilobytes** range, even for trivial APIs. That is the
-nature of the Dart-to-JS / Dart-to-Wasm runtime, not a property of this
-package. If your goal is a tiny utility that ships in a couple of
-kilobytes, hand-writing TypeScript will always be smaller. The value of
-this approach is reusing substantial existing Dart code from the web.
-
-## Source-map caveat
-
-Source maps work for JS in debug mode (`pnpm run build:dart:debug`).
-For Wasm, source-map support across browsers and Node is partial. Treat it
-as a debugging aid, not a guaranteed feature.
+[README.architecture.md](README.architecture.md) has the details;
+[the gg side of the story](https://github.com/ggsuite/gg/blob/main/doc/wasm-host-delegates.md)
+documents what had to change in gg itself.
 
 ## License
 
-See [LICENSE](LICENSE).
+MIT
