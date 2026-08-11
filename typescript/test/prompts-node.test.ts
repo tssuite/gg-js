@@ -9,6 +9,7 @@ import { describe, expect, test } from 'vitest';
 
 import { createNodeHost } from '../host-node.js';
 import {
+  askOnTerminal,
   createNodePrompts,
   UnansweredPromptError,
 } from '../prompts-node.js';
@@ -21,13 +22,18 @@ import {
 function scripted(answers: string[]): {
   prompts: ReturnType<typeof createNodePrompts>;
   written: string[];
+  asked: string[];
 } {
   const written: string[] = [];
+  const asked: string[] = [];
   const prompts = createNodePrompts({
     write: (text) => written.push(text),
-    readLine: async () => answers.shift() ?? null,
+    ask: async (prompt) => {
+      asked.push(prompt);
+      return answers.shift() ?? null;
+    },
   });
-  return { prompts, written };
+  return { prompts, written, asked };
 }
 
 describe('createNodePrompts()', () => {
@@ -44,14 +50,14 @@ describe('createNodePrompts()', () => {
     });
 
     test('marks the initial choice and takes it on an empty answer', async () => {
-      const { prompts, written } = scripted(['']);
+      const { prompts, written, asked } = scripted(['']);
 
       const index = await prompts.select('Pick', ['no', 'yes'], 1);
 
       expect(index).toBe(1);
       // The marker tells the user what return will give them.
       expect(written.join('')).toContain('> 2) yes');
-      expect(written.join('')).toContain('[2]');
+      expect(asked.join('')).toContain('[2]');
     });
 
     test('asks again after an answer that is not a choice', async () => {
@@ -79,21 +85,21 @@ describe('createNodePrompts()', () => {
   // ###########################################################################
   describe('input', () => {
     test('returns what the user typed', async () => {
-      const { prompts, written } = scripted(['my message']);
+      const { prompts, asked } = scripted(['my message']);
 
-      expect(await prompts.input('Message', '', '', false)).toBe(
-        'my message',
-      );
-      expect(written.join('')).toBe('Message: ');
+      expect(await prompts.input('Message', '', '', false)).toBe('my message');
+      // readline owns the prompt — it needs the prompt's width to place
+      // the cursor, so the caller must not write it separately.
+      expect(asked).toEqual(['Message: ']);
     });
 
     test('keeps the suggested text on an empty answer', async () => {
-      const { prompts, written } = scripted(['']);
+      const { prompts, asked } = scripted(['']);
 
       expect(await prompts.input('Message', '', 'suggested', false)).toBe(
         'suggested',
       );
-      expect(written.join('')).toContain('[suggested]');
+      expect(asked.join('')).toContain('[suggested]');
     });
 
     test('falls back to the default value when there is no initial text', async () => {
@@ -121,8 +127,8 @@ describe('createNodePrompts()', () => {
   // ###########################################################################
   describe('defaults', () => {
     test('reads a line off the input stream', async () => {
-      // No `readLine`: the answer comes through readline, which is the
-      // path a user at a terminal takes.
+      // No `ask`: the answer comes through readline, which is the path a
+      // user at a terminal takes.
       const written: string[] = [];
       const prompts = createNodePrompts({
         write: (text) => written.push(text),
@@ -136,6 +142,18 @@ describe('createNodePrompts()', () => {
     test('writes the question to stdout when no sink is given', async () => {
       const prompts = createNodePrompts({ input: Readable.from(['hi\n']) });
       expect(await prompts.input('Message', '', '', false)).toBe('hi');
+    });
+
+    test('reports end of input when the stream fails', async () => {
+      // A broken stdin must end the question rather than leave gg waiting
+      // on an answer that can no longer arrive.
+      const broken = new Readable({
+        read(): void {
+          this.destroy(new Error('stdin is gone'));
+        },
+      });
+
+      expect(await askOnTerminal(broken, () => {}, 'Q: ')).toBeNull();
     });
 
     test('reports end of input on an empty stream', async () => {

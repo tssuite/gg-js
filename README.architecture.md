@@ -165,10 +165,17 @@ implementation this package ships. Three decisions in it are not obvious:
   callbacks have to be synchronous — `dart:io`'s `…Sync` APIs cannot
   await — and a prompt does not, because every caller in gg already
   awaits it. So `prompts-node.ts` reads through `readline` instead of
-  blocking on a file descriptor, which is what makes it work on Windows.
-  Where the native gg draws an arrow-key list and a pre-filled buffer,
-  this draws a numbered list and a line of input — the same questions,
-  fewer keystrokes saved.
+  blocking on a file descriptor, which is what makes it work on Windows —
+  and gives the text input real line editing for free.
+- **readline owns the prompt string.** `askOnTerminal` passes the question
+  to `rl.question` rather than writing it first, because readline places
+  the cursor relative to a prompt it knows about; writing it separately
+  leaves every cursor key off by the width of the question. Its
+  `terminal` flag follows `input.isTTY`: on a terminal that turns the
+  line editing on, and on a pipe it stays off, where raw mode would only
+  garble the echo. The selection list is the one thing still drawn by
+  hand — an arrow-key list would need raw mode and a redraw loop, which
+  is the TUI `package:interact` exists to provide.
 - **A started process buffers until Dart listens.** `spawn` returns and
   Dart attaches its listeners one microtask later — a fast program can be
   done by then. `NodeStartedProcess` therefore collects output from the

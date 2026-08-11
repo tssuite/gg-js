@@ -33,8 +33,8 @@ export {
 } from './host-node.js';
 
 export {
+  askOnTerminal,
   createNodePrompts,
-  readLineFromStream,
   UnansweredPromptError,
   type NodePromptOptions,
 } from './prompts-node.js';

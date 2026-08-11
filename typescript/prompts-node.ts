@@ -8,20 +8,20 @@
 //
 // A native gg draws these with `package:interact`: arrow keys for the
 // selection lists, a pre-filled editable buffer for the messages. That
-// library reaches `dart:ffi` and cannot be part of a Wasm build, so these
-// are line-based instead — a numbered list and a plain line of input.
-// Same questions, same answers, fewer keystrokes saved.
+// library reaches `dart:ffi` and cannot be part of a Wasm build, so the
+// selection here is a numbered list instead. The text input is a real
+// editable line: `node:readline` provides the cursor keys, word jumps and
+// history that a terminal user expects.
 //
-// Reading goes through `node:readline`, which works on every platform Node
-// runs on. That is the whole reason gg's prompt contract is asynchronous:
-// a synchronous one would force a blocking read from file descriptor 0,
-// and a Windows console handle does not answer that the way a pty does.
-//
-// `terminal: false` is deliberate. It leaves the line editing to the
-// terminal itself — echo, backspace, the lot — instead of readline taking
-// the tty over, which is both simpler and identical across platforms.
+// Reading goes through `node:readline/promises`, which works on every
+// platform Node runs on. That is the whole reason gg's prompt contract is
+// asynchronous: a synchronous one would force a blocking read from file
+// descriptor 0, and a Windows console handle does not answer that the way
+// a pty does.
 
-import { createInterface } from 'node:readline';
+import { once } from 'node:events';
+import { createInterface } from 'node:readline/promises';
+import { Writable } from 'node:stream';
 
 import type { PromptHost } from './host.js';
 
@@ -30,11 +30,12 @@ export interface NodePromptOptions {
   /** Where the question is written. Defaults to `process.stdout`. */
   write?: (text: string) => void;
   /**
-   * Reads one line of the answer, `null` at end of input.
+   * Asks `prompt` and returns the answer, `null` at end of input.
    *
-   * Defaults to reading one line from {@link NodePromptOptions.input}.
+   * Defaults to {@link askOnTerminal} against
+   * {@link NodePromptOptions.input}.
    */
-  readLine?: () => Promise<string | null>;
+  ask?: (prompt: string) => Promise<string | null>;
   /** The stream answers are read from. Defaults to `process.stdin`. */
   input?: NodeJS.ReadableStream;
 }
@@ -57,18 +58,46 @@ export class UnansweredPromptError extends Error {
 }
 
 /**
- * Reads a single line from [input].
+ * Writes [prompt] and reads one edited line back.
+ *
+ * `readline` owns the prompt rather than the caller, because it needs the
+ * prompt's width to place the cursor: writing it separately leaves the
+ * arrow keys off by the length of the question.
+ *
+ * `terminal` is on only for a real terminal. That is what turns on the
+ * line editing — without it the cursor keys arrive as raw escape
+ * sequences and end up in the answer. For a pipe there is nothing to
+ * edit, and raw mode would only garble the echo.
  * @param input - The stream to read from.
- * @returns The line without its newline, or `null` at end of input.
+ * @param write - Where the prompt and the echo go.
+ * @param prompt - The question, written before the cursor.
+ * @returns The answer, or `null` at end of input.
  */
-export async function readLineFromStream(
+export async function askOnTerminal(
   input: NodeJS.ReadableStream,
+  write: (text: string) => void,
+  prompt: string,
 ): Promise<string | null> {
-  const rl = createInterface({ input, terminal: false });
+  const output = new Writable({
+    write(chunk: Buffer | string, _encoding, callback) {
+      write(chunk.toString());
+      callback();
+    },
+  });
+
+  const rl = createInterface({
+    input,
+    output,
+    terminal: (input as NodeJS.ReadStream).isTTY === true,
+  });
+
   try {
-    for await (const line of rl) {
-      return line;
-    }
+    // `question` never settles when the input ends before an answer
+    // arrives, so the close event has to end the wait — otherwise a
+    // piped run would hang on a question nobody can answer.
+    const closed = once(rl, 'close').then(() => null);
+    return await Promise.race([rl.question(prompt), closed]);
+  } catch {
     return null;
   } finally {
     rl.close();
@@ -88,7 +117,8 @@ export function createNodePrompts(
   const input = options.input ?? process.stdin;
   const write =
     options.write ?? ((text: string) => process.stdout.write(text));
-  const readLine = options.readLine ?? (() => readLineFromStream(input));
+  const ask =
+    options.ask ?? ((prompt: string) => askOnTerminal(input, write, prompt));
 
   return {
     async select(
@@ -105,9 +135,8 @@ export function createNodePrompts(
           const marker = index === fallback ? '>' : ' ';
           write(`  ${marker} ${index + 1}) ${choice}\n`);
         });
-        write(`Number [${fallback + 1}]: `);
 
-        const answer = await readLine();
+        const answer = await ask(`Number [${fallback + 1}]: `);
         if (answer === null) throw new UnansweredPromptError(prompt);
 
         // Return accepts the marked choice — the same shortcut interact's
@@ -138,13 +167,13 @@ export function createNodePrompts(
       // line on both sides — interact's `Input` is too.
       //
       // interact does hand the user an editable buffer holding
-      // `initialText`. A line reader cannot pre-fill one, so the text is
-      // shown and an empty answer keeps it — the same outcome for a user
-      // who is happy with what gg proposed.
+      // `initialText`. readline cannot pre-fill one, so the text is shown
+      // and an empty answer keeps it — the same outcome for a user who is
+      // happy with what gg proposed.
       const suggestion = initialText !== '' ? initialText : defaultValue;
-      write(suggestion !== '' ? `${prompt} [${suggestion}]: ` : `${prompt}: `);
-
-      const answer = await readLine();
+      const answer = await ask(
+        suggestion !== '' ? `${prompt} [${suggestion}]: ` : `${prompt}: `,
+      );
       if (answer === null) throw new UnansweredPromptError(prompt);
 
       return answer.trim() === '' ? suggestion : answer;

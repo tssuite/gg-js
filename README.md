@@ -113,13 +113,15 @@ That is how gg is tested, and how you would sandbox it.
 
 ## Limitations
 
-- **Interactive prompts look different.** The native gg draws its
-  selection lists with arrow keys and hands you a pre-filled editable
-  buffer for commit and merge messages; that library needs `dart:ffi`,
-  which WebAssembly does not have. Here you get a numbered list and a
-  plain line of input, where an empty answer keeps what gg proposed. Same
-  questions, same answers. Pass `prompts: false` to `createNodeHost` to
-  turn them off, and gg refuses the interactive commands instead.
+- **Selection lists are numbered, not arrow-driven.** The native gg draws
+  them with `package:interact`, which needs `dart:ffi` — something
+  WebAssembly does not have. So a list is numbered here and you type the
+  number; return takes the marked entry. Text input is a full `readline`
+  line, cursor keys and word jumps included; the only thing it cannot do
+  is hand you gg's suggestion pre-filled, so it shows the suggestion and
+  an empty answer keeps it. Same questions, same answers. Pass
+  `prompts: false` to `createNodeHost` to turn them off, and gg refuses
+  the interactive commands instead.
 - **Node only, for now.** The module loads in a browser, but
   `package:path` derives its path style from the page URL and would treat
   gg's paths as URLs.
@@ -127,7 +129,7 @@ That is how gg is tested, and how you would sandbox it.
   traps are handled: `package:path` picks the Windows style, batch
   wrappers like `pana.bat` are given the shell Node requires, and the
   prompts read through `readline` rather than blocking on a console
-  handle. What remains unproven is `dart:io`'s own `stdin.readLineSync()`,
+  handle — which is also what gives them their line editing. What remains unproven is `dart:io`'s own `stdin.readLineSync()`,
   which gg uses in the interactive publish flow and which cannot be
   anything but a synchronous read.
 

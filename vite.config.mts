@@ -23,14 +23,13 @@ export default defineConfig({
       formats: ['es'],
     },
     rollupOptions: {
-      external: [
-        'node:child_process',
-        'node:fs',
-        'node:fs/promises',
-        'node:os',
-        'node:path',
-        'node:url',
-      ],
+      // Every Node builtin stays external. A hand-kept list is a trap:
+      // a missing entry does not fail the build, it produces a namespace
+      // without the function in it, and the call fails at runtime — which
+      // is how `node:readline` once broke every interactive prompt while
+      // the unit tests, which run the source rather than the bundle,
+      // stayed green.
+      external: [/^node:/],
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: 'chunks/[name]-[hash].js',
