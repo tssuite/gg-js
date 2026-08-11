@@ -10,9 +10,47 @@ import { describe, expect, test } from 'vitest';
 import { createNodeHost } from '../host-node.js';
 import {
   askOnTerminal,
+  chooseByArrows,
   createNodePrompts,
   UnansweredPromptError,
 } from '../prompts-node.js';
+
+/**
+ * A stream that claims to be a terminal, so the raw-mode paths run.
+ *
+ * The real ones cannot be used in a test: taking the process' own stdin
+ * into raw mode would swallow the test runner's keys.
+ */
+class FakeTty extends Readable {
+  /** What `isTerminal` looks for. */
+  isTTY = true;
+  /** Whether raw mode is on, so a test can check it was restored. */
+  isRaw = false;
+  /** How often raw mode was switched, so a leak would show. */
+  rawModeCalls: boolean[] = [];
+
+  /**
+   * Records the raw mode the caller asked for.
+   * @param mode - Whether to turn raw mode on.
+   * @returns This stream, the way `setRawMode` does.
+   */
+  setRawMode(mode: boolean): this {
+    this.isRaw = mode;
+    this.rawModeCalls.push(mode);
+    return this;
+  }
+
+  /** Nothing to pull — the test pushes keys in. */
+  _read(): void {}
+
+  /**
+   * Feeds one key sequence in, once the reader is listening.
+   * @param keys - The bytes a terminal would send.
+   */
+  press(keys: string): void {
+    setImmediate(() => this.push(keys));
+  }
+}
 
 /**
  * Builds prompts that read from a scripted list of answers.
@@ -27,6 +65,9 @@ function scripted(answers: string[]): {
   const written: string[] = [];
   const asked: string[] = [];
   const prompts = createNodePrompts({
+    // Not a terminal, so the numbered list and the bracketed suggestion
+    // are what these exercise.
+    input: Readable.from([]),
     write: (text) => written.push(text),
     ask: async (prompt) => {
       asked.push(prompt);
@@ -38,11 +79,15 @@ function scripted(answers: string[]): {
 
 describe('createNodePrompts()', () => {
   // ###########################################################################
-  describe('select', () => {
+  describe('select, without a terminal', () => {
     test('returns the index the user picked', async () => {
       const { prompts, written } = scripted(['2']);
 
-      const index = await prompts.select('Pick one', ['alpha', 'beta', 'gamma'], 0);
+      const index = await prompts.select(
+        'Pick one',
+        ['alpha', 'beta', 'gamma'],
+        0,
+      );
 
       expect(index).toBe(1);
       expect(written.join('')).toContain('Pick one');
@@ -83,7 +128,185 @@ describe('createNodePrompts()', () => {
   });
 
   // ###########################################################################
-  describe('input', () => {
+  describe('select, on a terminal', () => {
+    test('walks the list with the arrow keys', async () => {
+      const tty = new FakeTty();
+      const written: string[] = [];
+
+      const picked = chooseByArrows(
+        tty,
+        (text) => written.push(text),
+        'Select version increment:',
+        ['Patch', 'Minor', 'Major'],
+        0,
+      );
+      tty.press('\x1b[B\x1b[B\r');
+
+      expect(await picked).toBe(2);
+      // The marker followed the keys rather than the digits being typed.
+      expect(written.join('')).toContain('> Major');
+    });
+
+    test('goes back up again', async () => {
+      const tty = new FakeTty();
+
+      const picked = chooseByArrows(tty, () => {}, 'Pick', ['a', 'b', 'c'], 2);
+      tty.press('\x1b[A\r');
+
+      expect(await picked).toBe(1);
+    });
+
+    test('takes k and j as well', async () => {
+      const tty = new FakeTty();
+
+      const picked = chooseByArrows(tty, () => {}, 'Pick', ['a', 'b', 'c'], 0);
+      tty.press('jjk\r');
+
+      expect(await picked).toBe(1);
+    });
+
+    test('wraps around at both ends', async () => {
+      const tty = new FakeTty();
+
+      // Up from the first entry is the last one — the long walk back is
+      // what the wrap saves.
+      const picked = chooseByArrows(tty, () => {}, 'Pick', ['a', 'b', 'c'], 0);
+      tty.press('\x1b[A\x1b[B\x1b[B\r');
+
+      expect(await picked).toBe(1);
+    });
+
+    test('still takes the number of an entry', async () => {
+      const tty = new FakeTty();
+
+      const picked = chooseByArrows(tty, () => {}, 'Pick', ['a', 'b', 'c'], 0);
+      tty.press('3\r');
+
+      expect(await picked).toBe(2);
+    });
+
+    test('ignores a number that is not an entry', async () => {
+      const tty = new FakeTty();
+
+      const picked = chooseByArrows(tty, () => {}, 'Pick', ['a', 'b'], 0);
+      tty.press('9x\r');
+
+      expect(await picked).toBe(0);
+    });
+
+    test('starts at the first entry for an out-of-range initial', async () => {
+      const tty = new FakeTty();
+
+      const picked = chooseByArrows(tty, () => {}, 'Pick', ['a', 'b'], 99);
+      tty.press('\r');
+
+      expect(await picked).toBe(0);
+    });
+
+    test('gives up on ctrl-c rather than picking for the user', async () => {
+      const tty = new FakeTty();
+
+      // Raw mode swallows the interrupt, so it has to be read as a key.
+      const picked = chooseByArrows(tty, () => {}, 'Pick', ['a', 'b'], 0);
+      tty.press('\x03');
+
+      expect(await picked).toBeNull();
+    });
+
+    test('does not mistake a plain c for the interrupt', async () => {
+      const tty = new FakeTty();
+
+      const picked = chooseByArrows(tty, () => {}, 'Pick', ['a', 'b'], 1);
+      tty.press('c\r');
+
+      expect(await picked).toBe(1);
+    });
+
+    test('ignores a key it has no name for', async () => {
+      const tty = new FakeTty();
+
+      // An umlaut arrives as bytes readline does not name, and must not
+      // be read as a digit or a command.
+      const picked = chooseByArrows(tty, () => {}, 'Pick', ['a', 'b'], 0);
+      tty.press('ü\r');
+
+      expect(await picked).toBe(0);
+    });
+
+    test('gives up when the terminal goes away', async () => {
+      const tty = new FakeTty();
+
+      const picked = chooseByArrows(tty, () => {}, 'Pick', ['a', 'b'], 0);
+      setImmediate(() => tty.emit('end'));
+
+      expect(await picked).toBeNull();
+    });
+
+    test('leaves the terminal as it found it', async () => {
+      const tty = new FakeTty();
+      const written: string[] = [];
+
+      const picked = chooseByArrows(
+        tty,
+        (text) => written.push(text),
+        'Pick',
+        ['a', 'b'],
+        0,
+      );
+      tty.press('\r');
+      await picked;
+
+      // A prompt that left raw mode on would eat every key the user types
+      // afterwards, and a hidden cursor would stay hidden.
+      expect(tty.isRaw).toBe(false);
+      expect(tty.rawModeCalls).toEqual([true, false]);
+      expect(written.join('')).toContain('\x1b[?25h');
+    });
+
+    test('leaves raw mode alone when it was already on', async () => {
+      const tty = new FakeTty();
+      tty.setRawMode(true);
+      tty.rawModeCalls = [];
+
+      const picked = chooseByArrows(tty, () => {}, 'Pick', ['a', 'b'], 0);
+      tty.press('\r');
+      await picked;
+
+      expect(tty.isRaw).toBe(true);
+      expect(tty.rawModeCalls).toEqual([true]);
+    });
+
+    test('redraws over the list instead of below it', async () => {
+      const tty = new FakeTty();
+      const written: string[] = [];
+
+      const picked = chooseByArrows(
+        tty,
+        (text) => written.push(text),
+        'Pick',
+        ['a', 'b', 'c'],
+        0,
+      );
+      tty.press('\x1b[B\r');
+      await picked;
+
+      // One line for the prompt plus one per entry.
+      expect(written.join('')).toContain('\x1b[4A');
+    });
+
+    test('is what the prompts use when stdin is a terminal', async () => {
+      const tty = new FakeTty();
+      const prompts = createNodePrompts({ input: tty, write: () => {} });
+
+      const picked = prompts.select('Pick', ['a', 'b'], 0);
+      tty.press('\x1b[B\r');
+
+      expect(await picked).toBe(1);
+    });
+  });
+
+  // ###########################################################################
+  describe('input, without a terminal', () => {
     test('returns what the user typed', async () => {
       const { prompts, asked } = scripted(['my message']);
 
@@ -121,6 +344,62 @@ describe('createNodePrompts()', () => {
       await expect(prompts.input('Message', 'x', '', false)).rejects.toThrow(
         /stdin ended/,
       );
+    });
+  });
+
+  // ###########################################################################
+  describe('input, on a terminal', () => {
+    test('starts the buffer with what gg proposed', async () => {
+      const tty = new FakeTty();
+      const asked: [string, string][] = [];
+      const prompts = createNodePrompts({
+        input: tty,
+        write: () => {},
+        ask: async (prompt, initialText) => {
+          asked.push([prompt, initialText]);
+          return 'Provide gg via npm, edited';
+        },
+      });
+
+      expect(await prompts.input('Edit merge message:', '', 'seed', true)).toBe(
+        'Provide gg via npm, edited',
+      );
+      // Not a bracketed hint: the proposal is in the buffer, ready to be
+      // changed, the way interact's editor has it.
+      expect(asked).toEqual([['Edit merge message: ', 'seed']]);
+    });
+
+    test('means »none« when the user clears the buffer', async () => {
+      const tty = new FakeTty();
+      const prompts = createNodePrompts({
+        input: tty,
+        write: () => {},
+        ask: async () => '',
+      });
+
+      // interact reads an emptied buffer as the default value, and gg
+      // passes none for the merge message — so an emptied editor is an
+      // empty message rather than the proposal sneaking back in.
+      expect(await prompts.input('Edit merge message:', '', 'seed', true)).toBe(
+        '',
+      );
+    });
+
+    test('seeds readline with the initial text', async () => {
+      const tty = new FakeTty();
+      const written: string[] = [];
+
+      const answer = askOnTerminal(
+        tty,
+        (text) => written.push(text),
+        'Edit merge message: ',
+        'Provide gg via npm',
+      );
+      tty.press('!\r');
+
+      // The seed is editable, so a keystroke lands after it rather than
+      // replacing it.
+      expect(await answer).toBe('Provide gg via npm!');
     });
   });
 

@@ -181,9 +181,22 @@ implementation this package ships. Three decisions in it are not obvious:
   leaves every cursor key off by the width of the question. Its
   `terminal` flag follows `input.isTTY`: on a terminal that turns the
   line editing on, and on a pipe it stays off, where raw mode would only
-  garble the echo. The selection list is the one thing still drawn by
-  hand — an arrow-key list would need raw mode and a redraw loop, which
-  is the TUI `package:interact` exists to provide.
+  garble the echo.
+- **The editor is seeded, not hinted.** `rl.write(initialText)` right
+  after `rl.question` puts gg's proposal into the buffer, which is what
+  interact's `Input` does with the same argument — the message is there
+  to be changed, and an untouched return accepts it. Only on a terminal:
+  with `terminal: false` `rl.write` feeds the interface as _input_, so it
+  would prepend itself to the piped answer. The pipe therefore keeps the
+  bracketed suggestion.
+- **The selection list is drawn by hand.** `chooseByArrows` takes stdin
+  into raw mode, reads `keypress` events and redraws the list in place
+  (`\x1b[nA` back over it, erase, rewrite) — the small TUI
+  `package:interact` provides natively. It restores raw mode and the
+  cursor in a `finally`, because leaving either behind would break the
+  terminal for everything the user types afterwards, and it reads ctrl-c
+  itself since raw mode swallows the interrupt. `chooseByNumber` is the
+  fallback wherever there is no terminal to draw on.
 - **A started process buffers until Dart listens.** `spawn` returns and
   Dart attaches its listeners one microtask later — a fast program can be
   done by then. `NodeStartedProcess` therefore collects output from the

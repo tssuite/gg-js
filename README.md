@@ -113,15 +113,16 @@ That is how gg is tested, and how you would sandbox it.
 
 ## Limitations
 
-- **Selection lists are numbered, not arrow-driven.** The native gg draws
+- **Interactive prompts are rebuilt, not borrowed.** The native gg draws
   them with `package:interact`, which needs `dart:ffi` — something
-  WebAssembly does not have. So a list is numbered here and you type the
-  number; return takes the marked entry. Text input is a full `readline`
-  line, cursor keys and word jumps included; the only thing it cannot do
-  is hand you gg's suggestion pre-filled, so it shows the suggestion and
-  an empty answer keeps it. Same questions, same answers. Pass
-  `prompts: false` to `createNodeHost` to turn them off, and gg refuses
-  the interactive commands instead.
+  WebAssembly does not have. They are rebuilt on `node:readline` here and
+  behave the same: the selection lists are walked with the arrow keys,
+  and the message editors start with gg's proposal in the buffer, ready
+  to be edited. Away from a terminal — a pipe, CI — there is nothing to
+  draw on, so a list falls back to numbered choices and an editor to a
+  suggestion in brackets that an empty answer keeps. Pass
+  `prompts: false` to `createNodeHost` to turn them off entirely, and gg
+  refuses the interactive commands instead.
 - **Node only, for now.** The module loads in a browser, but
   `package:path` derives its path style from the page URL and would treat
   gg's paths as URLs.

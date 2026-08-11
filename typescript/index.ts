@@ -34,6 +34,8 @@ export {
 
 export {
   askOnTerminal,
+  chooseByArrows,
+  chooseByNumber,
   createNodePrompts,
   UnansweredPromptError,
   type NodePromptOptions,
