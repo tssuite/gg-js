@@ -158,6 +158,14 @@ implementation this package ships. Three decisions in it are not obvious:
   native Dart build does not need one. `needsShell` decides that here,
   where the platform is known, instead of spreading a Node detail through
   the gg suite.
+- **The shell is built, not switched on.** Node's `shell: true` joins the
+  arguments with spaces and escapes nothing, so a commit message arrived
+  as several arguments and a `;` started a second command — the bug
+  `DEP0190` warns about. `spawnCommand` therefore rewrites the call the
+  way `dart:io`'s `_getShellArguments` does: single-quoted words after
+  `/bin/sh -c`, an argument vector after `cmd.exe /c` on Windows. Both
+  spellings were measured against a native `Process.run`, down to the 127
+  a shell reports when the executable is itself a command line.
 - **`start` only detaches when asked.** gg uses `Process.start` for two
   different things: reading a program's output, and launching an editor
   that should outlive gg. Only the second gets a detached child.

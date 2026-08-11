@@ -11,8 +11,8 @@ environment:
 
 dependencies:
   web: ^1.1.1
-  gg: ^16.0.0
-  gg_log: ^1.0.6
+  gg: ^16.1.0
+  gg_log: ^1.0.7
 dev_dependencies:
   gg_console_colors: ^2.3.0
   lints: ^6.1.0

@@ -212,10 +212,10 @@ export function createNodeHost(options: NodeHostOptions = {}): GgHost {
       // Synchronous on purpose. gg awaits every process it starts, and
       // `spawnSync` keeps the ordering of gg's own output and the child's
       // output intact — with `spawn` the two interleave unpredictably.
-      const result = spawnSync(executable, args, {
+      const command = spawnCommand(executable, args, runOptions.runInShell);
+      const result = spawnSync(command.executable, command.args, {
         cwd: absolute(runOptions.workingDirectory ?? cwd),
         env: spawnEnv(runOptions),
-        shell: needsShell(executable, runOptions.runInShell),
         encoding: 'utf8',
         maxBuffer: 64 * 1024 * 1024,
       });
@@ -246,10 +246,10 @@ export function createNodeHost(options: NodeHostOptions = {}): GgHost {
     },
 
     async start(executable, args, runOptions): Promise<StartedProcess> {
-      const child = spawn(executable, args, {
+      const command = spawnCommand(executable, args, runOptions.runInShell);
+      const child = spawn(command.executable, command.args, {
         cwd: absolute(runOptions.workingDirectory ?? cwd),
         env: spawnEnv(runOptions),
-        shell: needsShell(executable, runOptions.runInShell),
         // Detached means »outlive gg«: `gg do code` opens the editor that
         // way and never reads anything back.
         detached: runOptions.detached,
@@ -331,6 +331,58 @@ export function needsShell(
   if (requested) return true;
   if (platform !== 'win32') return false;
   return /\.(bat|cmd)$/i.test(executable);
+}
+
+/**
+ * Wraps a single-quoted [word] the way a POSIX shell reads it back whole.
+ *
+ * A single-quoted string has no escape character, so an embedded quote has
+ * to leave the quoting, contribute a literal `'`, and go back in.
+ * @param word - The word to quote.
+ * @returns The word as one shell token.
+ */
+function posixQuote(word: string): string {
+  return `'${word.replaceAll("'", `'"'"'`)}'`;
+}
+
+/**
+ * Turns what gg wants to run into what Node should spawn.
+ *
+ * Node's own `shell: true` joins the arguments with spaces and quotes
+ * nothing, so a commit message would arrive as several arguments and a
+ * `;` would start a second command. That is what `DEP0190` warns about,
+ * and gg hits it: `runInShell` is on for anything gg pipes through a
+ * shell. So the shell is built here instead, exactly the way `dart:io`
+ * builds it in `_getShellArguments` — single-quoted words on POSIX, an
+ * argument vector after `cmd.exe /c` on Windows, where Node applies the
+ * same escaping Dart's `_windowsArgumentEscape` does.
+ *
+ * Being a rewrite rather than an option also settles the `.bat` case:
+ * `cmd.exe /c pana.bat …` is what Windows would have run for a native gg
+ * anyway.
+ * @param executable - The program gg wants to run.
+ * @param args - Its arguments, unquoted.
+ * @param runInShell - Whether gg asked for a shell.
+ * @param platform - The platform to build for. Defaults to this one.
+ * @returns The executable and arguments to hand to `spawn`.
+ */
+export function spawnCommand(
+  executable: string,
+  args: string[],
+  runInShell: boolean,
+  platform: string = process.platform,
+): { executable: string; args: string[] } {
+  if (!needsShell(executable, runInShell, platform)) {
+    return { executable, args };
+  }
+
+  if (platform === 'win32') {
+    return { executable: 'cmd.exe', args: ['/c', executable, ...args] };
+  }
+
+  const shell = platform === 'android' ? '/system/bin/sh' : '/bin/sh';
+  const commandLine = [executable, ...args].map(posixQuote).join(' ');
+  return { executable: shell, args: ['-c', commandLine] };
 }
 
 /**

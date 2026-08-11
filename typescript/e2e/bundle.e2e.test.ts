@@ -76,6 +76,26 @@ describe('the built bundle', () => {
     expect(await prompts.input('Message', '', 'seed', true)).toBe('edited');
   });
 
+  test('keeps an argument whole when gg asks for a shell', async () => {
+    // `shell: true` in Node joins the arguments with spaces and quotes
+    // nothing, so this used to arrive as three arguments — and warn with
+    // DEP0190 on the way. gg passes commit messages through here.
+    const host = gg.createNodeHost();
+    const result = await host.process.run(
+      process.execPath,
+      [
+        '-e',
+        'console.log(JSON.stringify(process.argv.slice(1)))',
+        'fix the bug',
+        'a;b',
+      ],
+      { includeParentEnvironment: true, runInShell: true, detached: false },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(['fix the bug', 'a;b']);
+  });
+
   test('runs a program through the host', async () => {
     // Reaches node:child_process through the bundle.
     const host = gg.createNodeHost();

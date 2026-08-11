@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   createNodeHost,
   needsShell,
+  spawnCommand,
   nodePlatformToDart,
   readLineFrom,
 } from '../host-node.js';
@@ -290,13 +291,45 @@ describe('createNodeHost()', () => {
     test('runs through a shell when asked', async () => {
       // `echo` is a builtin of both sh and cmd.exe, so this is the one
       // place a bare shell word is portable.
-      const result = await host.process.run('echo hello-shell', [], {
+      const result = await host.process.run('echo', ['hello-shell'], {
         ...options,
         runInShell: true,
       });
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout.trim()).toBe('hello-shell');
+    });
+
+    test('takes the executable as a name, not as a command line', async () => {
+      // `dart:io` quotes the executable like any other word, so a shell
+      // run is not a place to smuggle in a command line. Measured against
+      // a native `Process.run('echo hello', [], runInShell: true)`, which
+      // reports the same 127.
+      const result = await host.process.run('echo hello-shell', [], {
+        ...options,
+        runInShell: true,
+      });
+
+      expect(result.exitCode).toBe(127);
+    });
+
+    test('keeps an argument with spaces and semicolons whole', async () => {
+      // The regression this guards: Node's `shell: true` concatenates the
+      // arguments unescaped, so a commit message arrived as three of them
+      // and a `;` started a second command.
+      const result = await host.process.run(
+        process.execPath,
+        [
+          '-e',
+          'console.log(JSON.stringify(process.argv.slice(1)))',
+          'fix the bug',
+          'a;b',
+        ],
+        { ...options, runInShell: true },
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual(['fix the bug', 'a;b']);
     });
 
     test('start(detached) returns without waiting', async () => {
@@ -493,6 +526,64 @@ describe('createNodeHost()', () => {
 
     test('decides for this platform by default', () => {
       expect(needsShell('pana.bat', false)).toBe(process.platform === 'win32');
+    });
+  });
+
+  // ###########################################################################
+  describe('spawnCommand()', () => {
+    test('spawns directly when no shell is involved', () => {
+      expect(spawnCommand('git', ['status'], false, 'linux')).toEqual({
+        executable: 'git',
+        args: ['status'],
+      });
+    });
+
+    test('quotes every word for a POSIX shell', () => {
+      // Node's own `shell: true` would join these with spaces, which turns
+      // one commit message into three arguments and lets `;` start a
+      // second command. `dart:io` single-quotes instead, and so do we.
+      expect(
+        spawnCommand('git', ['commit', '-m', 'fix the bug; ok'], true, 'linux'),
+      ).toEqual({
+        executable: '/bin/sh',
+        args: ["-c", "'git' 'commit' '-m' 'fix the bug; ok'"],
+      });
+    });
+
+    test('leaves and re-enters the quoting for an embedded quote', () => {
+      // A single-quoted shell string has no escape character, so a `'` has
+      // to be spelled out between quoted runs.
+      expect(spawnCommand('echo', ["it's"], true, 'linux').args[1]).toBe(
+        `'echo' 'it'"'"'s'`,
+      );
+    });
+
+    test('uses the Android shell there', () => {
+      expect(spawnCommand('sh', [], true, 'android').executable).toBe(
+        '/system/bin/sh',
+      );
+    });
+
+    test('hands Windows an argument vector after cmd /c', () => {
+      // Windows gets the arguments unquoted on purpose: Node escapes them
+      // on the way into the command line, the same way `dart:io` does.
+      expect(
+        spawnCommand('git', ['commit', '-m', 'a b'], true, 'win32'),
+      ).toEqual({
+        executable: 'cmd.exe',
+        args: ['/c', 'git', 'commit', '-m', 'a b'],
+      });
+    });
+
+    test('runs a batch file through cmd without being asked', () => {
+      expect(spawnCommand('pana.bat', ['.'], false, 'win32')).toEqual({
+        executable: 'cmd.exe',
+        args: ['/c', 'pana.bat', '.'],
+      });
+    });
+
+    test('builds for this platform by default', () => {
+      expect(spawnCommand('git', ['status'], false).executable).toBe('git');
     });
   });
 
