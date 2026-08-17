@@ -2,4 +2,4 @@
 // Kept in sync by test/ggwsm_version.test.ts.
 
 /** The version of the `ggwsm` package. */
-export const ggwsmVersion = '0.1.4';
+export const ggwsmVersion = '0.0.1';

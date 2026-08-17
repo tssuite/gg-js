@@ -1,6 +1,6 @@
 {
   "name": "ggwsm",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "The gg command line, compiled to WebAssembly and runnable from Node via npx.",
   "keywords": [
     "gg",
