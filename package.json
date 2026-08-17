@@ -1,6 +1,6 @@
 {
-  "name": "ggjs",
-  "version": "0.1.1",
+  "name": "ggwsm",
+  "version": "0.0.0",
   "description": "The gg command line, compiled to WebAssembly and runnable from Node via npx.",
   "keywords": [
     "gg",
@@ -48,7 +48,6 @@
     "lint": "eslint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepublishOnly": "pnpm run build && pnpm run test",
     "test:e2e": "vitest run --project=e2e"
   },
   "devDependencies": {
