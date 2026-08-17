@@ -9,4 +9,4 @@
 // coverage:ignore-file
 
 /// The version of the `gg_js` package.
-const String ggJsVersion = '1.0.3';
+const String ggJsVersion = '0.1.1';

@@ -1,6 +1,6 @@
 {
-  "name": "@tssuite/gg-js",
-  "version": "1.0.3",
+  "name": "ggjs",
+  "version": "0.1.1",
   "description": "The gg command line, compiled to WebAssembly and runnable from Node via npx.",
   "keywords": [
     "gg",
@@ -58,9 +58,9 @@
     "@vitest/browser-playwright": "^4.1.10",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.8.1",
-    "eslint-plugin-jsdoc": "^64.0.2",
+    "eslint-plugin-jsdoc": "^64.2.0",
     "eslint-plugin-tsdoc": "^0.5.2",
-    "globals": "^17.9.0",
+    "globals": "^17.11.0",
     "jsdoc": "^4.0.5",
     "playwright": "^1.62.1",
     "prettier": "^3.9.6",
