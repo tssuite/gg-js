@@ -1,5 +1,5 @@
 {
-  "name": "@tssuite/gg-js",
+  "name": "ggjs",
   "version": "1.0.3",
   "description": "The gg command line, compiled to WebAssembly and runnable from Node via npx.",
   "keywords": [
