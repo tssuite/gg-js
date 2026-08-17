@@ -1,9 +1,6 @@
 name: ggwsm
-description: >
-  The [`gg`](https://github.com/ggsuite/gg) command line — the tool that
-  drives commits, reviews and releases across all repositories of a ticket —
-  compiled to WebAssembly and published on npm.
-version: 0.1.4
+description: Bridge from gg to ggwsm (WASM version of gg)
+version: 0.0.1
 repository: https://github.com/tssuite/ggwsm.git
 publish_to: none
 
