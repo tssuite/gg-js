@@ -23,7 +23,7 @@ library;
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
-import 'package:gg_js/src/main.dart';
+import 'package:ggwsm/src/main.dart';
 import 'package:test/test.dart';
 
 void main() {

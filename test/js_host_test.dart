@@ -23,7 +23,7 @@ import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:gg/gg.dart';
-import 'package:gg_js/src/js_host.dart';
+import 'package:ggwsm/src/js_host.dart';
 import 'package:test/test.dart';
 
 /// Builds a JS object out of `name: value` pairs.

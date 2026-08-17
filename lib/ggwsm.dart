@@ -6,4 +6,4 @@
 
 library;
 
-export 'src/gg_js_version.dart';
+export 'src/ggwsm_version.dart';

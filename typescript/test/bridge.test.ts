@@ -143,7 +143,15 @@ describe('the gg bridge', () => {
       },
       process: {
         run: async () => ({ exitCode: 0, stdout: '', stderr: '' }),
-        start: async () => ({ exitCode: 0, stdout: '', stderr: '' }),
+        start: async () => ({
+          pid: 0,
+          onStdout: () => {},
+          onStderr: () => {},
+          onExit: () => {},
+          writeStdin: () => {},
+          closeStdin: () => {},
+          kill: () => false,
+        }),
       },
       platform: {
         environmentEntries: () => [],
@@ -184,11 +192,11 @@ describe('the gg bridge', () => {
       ...node,
       console: { ...node.console, hasTerminal: () => true },
       prompts: {
-        select: (prompt, options) => {
+        select: async (prompt, options) => {
           asked.push(prompt);
           return options.length - 1;
         },
-        input: (prompt) => {
+        input: async (prompt) => {
           asked.push(prompt);
           return 'answered';
         },

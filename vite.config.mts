@@ -7,6 +7,7 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
+
 export default defineConfig({
   build: {
     target: 'es2022',
@@ -45,7 +46,7 @@ export default defineConfig({
   // package stays cheap.
   //
   // `dist/bridge-wasm.wasm` is copied next to it by the build script and
-  // exported as `@tssuite/gg-js/wasm` for consumers who would rather load
+  // exported as `@tssuite/ggwsm/wasm` for consumers who would rather load
   // the module themselves and pass `wasmUrl`.
   assetsInclude: ['**/*.wasm'],
 });

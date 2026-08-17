@@ -50,8 +50,8 @@ void _clean() {
 /// Puts the pieces the bundler does not produce next to the bundle.
 void _finalize() {
   _copy('$_generated/bridge-wasm.wasm', '$_dist/bridge-wasm.wasm');
-  _copy('bin/gg-js.mjs', '$_dist/gg-js.mjs');
-  _makeExecutable('$_dist/gg-js.mjs');
+  _copy('bin/ggwsm.mjs', '$_dist/ggwsm.mjs');
+  _makeExecutable('$_dist/ggwsm.mjs');
   stdout.writeln('Finalized $_dist.');
 }
 

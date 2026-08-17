@@ -1,9 +1,10 @@
-name: gg_js
+name: ggwsm
 description: >
-  Bridge exposing a Dart package as a JavaScript and WebAssembly
-  module with hand-typed TypeScript declarations.
-version: 0.1.1
-repository: https://github.com/tssuite/gg_js.git
+  The [`gg`](https://github.com/ggsuite/gg) command line — the tool that
+  drives commits, reviews and releases across all repositories of a ticket —
+  compiled to WebAssembly and published on npm.
+version: 0.1.4
+repository: https://github.com/tssuite/ggwsm.git
 publish_to: none
 
 environment:

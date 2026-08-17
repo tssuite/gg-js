@@ -1,6 +1,6 @@
 {
-  "name": "ggjs",
-  "version": "0.1.1",
+  "name": "ggwsm",
+  "version": "0.1.4",
   "description": "The gg command line, compiled to WebAssembly and runnable from Node via npx.",
   "keywords": [
     "gg",
@@ -36,8 +36,9 @@
     "sync-version": "dart run scripts/sync_version.dart",
     "build:dart": "dart run build.dart",
     "build:dart:debug": "dart run build.dart --debug",
-    "build:ts": "tsc -p tsconfig.json && vite build && dart run scripts/dist.dart finalize",
+    "build:ts": "tsc -p tsconfig.build.json && vite build && dart run scripts/dist.dart finalize",
     "build": "pnpm run clean && pnpm run sync-version && pnpm run build:dart && pnpm run build:ts",
+    "prepublishOnly": "pnpm run build && pnpm run test",
     "clean": "dart run scripts/dist.dart clean",
     "test:dart": "dart test",
     "test:vitest": "vitest run --coverage",
@@ -48,7 +49,6 @@
     "lint": "eslint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepublishOnly": "pnpm run build && pnpm run test",
     "test:e2e": "vitest run --project=e2e"
   },
   "devDependencies": {
@@ -71,11 +71,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tssuite/gg-js.git"
+    "url": "git+https://github.com/tssuite/ggwsm.git"
   },
-  "homepage": "https://github.com/tssuite/gg-js#readme",
+  "homepage": "https://github.com/tssuite/ggwsm#readme",
   "bugs": {
-    "url": "https://github.com/tssuite/gg-js/issues"
+    "url": "https://github.com/tssuite/ggwsm/issues"
   },
   "publishConfig": {
     "access": "public"
@@ -84,6 +84,6 @@
   "author": "Dr. Gabriel Gatzsche",
   "packageManager": "pnpm@11.5.3+sha512.7ac1c919341c213a34dc0d02afb7143c5c26ac26ee8c4782deea821b8ac64d2134a081fd8941dae6e29bbb48f58dfc2b7fbceeccc07cb2f09d219d342a4969ed",
   "bin": {
-    "gg-js": "./dist/gg-js.mjs"
+    "ggwsm": "./dist/ggwsm.mjs"
   }
 }

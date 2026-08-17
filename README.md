@@ -1,11 +1,11 @@
-# @tssuite/gg-js
+# ggwsm
 
 The [`gg`](https://github.com/ggsuite/gg) command line — the tool that
 drives commits, reviews and releases across all repositories of a ticket —
 compiled to WebAssembly and published on npm.
 
 ```bash
-npx @tssuite/gg-js do ls repos
+npx ggwsm do ls repos
 ```
 
 No Dart SDK, no `dart pub global activate`. Node 22+ is enough.
@@ -15,21 +15,21 @@ No Dart SDK, no `dart pub global activate`. Node 22+ is enough.
 Run it straight from npm:
 
 ```bash
-npx @tssuite/gg-js --help
+npx ggwsm --help
 ```
 
 …or put it in a project so everyone working on it gets the same version:
 
 ```bash
-pnpm add -D @tssuite/gg-js
+pnpm add -D ggwsm
 ```
 
-which makes `gg-js` available to your scripts:
+which makes `ggwsm` available to your scripts:
 
 ```json
 {
   "scripts": {
-    "check": "gg-js one can commit"
+    "check": "ggwsm one can commit"
   }
 }
 ```
@@ -41,11 +41,11 @@ output — the file system and the programs gg starts are handed to it by
 Node:
 
 ```bash
-npx @tssuite/gg-js --version
-npx @tssuite/gg-js --help
-npx @tssuite/gg-js do ls repos
-npx @tssuite/gg-js do ls tickets
-npx @tssuite/gg-js one did commit
+npx ggwsm --version
+npx ggwsm --help
+npx ggwsm do ls repos
+npx ggwsm do ls tickets
+npx ggwsm one did commit
 ```
 
 `gg one can commit` runs the real checks — `dart analyze`, `dart format`
@@ -60,7 +60,7 @@ The package is a library as well as a binary. `runGg` loads the module,
 gives it a Node host and runs a command line:
 
 ```ts
-import { runGg } from '@tssuite/gg-js';
+import { runGg } from 'ggwsm';
 
 const exitCode = await runGg(['do', 'ls', 'repos']);
 ```
@@ -68,7 +68,7 @@ const exitCode = await runGg(['do', 'ls', 'repos']);
 To capture the output instead of printing it, build the host yourself:
 
 ```ts
-import { createNodeHost, init } from '@tssuite/gg-js';
+import { createNodeHost, init } from 'ggwsm';
 
 const output: string[] = [];
 const gg = await init();
@@ -95,7 +95,7 @@ platform and console. Nothing in gg knows where its files come from, so a
 host backed by a map works as well as one backed by `node:fs`:
 
 ```ts
-import { EntityType, type GgHost } from '@tssuite/gg-js';
+import { EntityType, type GgHost } from 'ggwsm';
 
 const files = new Map<string, string>([['/work/pubspec.yaml', 'name: demo']]);
 

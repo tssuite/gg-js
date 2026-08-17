@@ -16,17 +16,10 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 import {
-  createNodeHost,
-  needsShell,
-  spawnCommand,
-  nodePlatformToDart,
-  readLineFrom,
+    createNodeHost, needsShell, nodePlatformToDart, readLineFrom, spawnCommand
 } from '../host-node.js';
-import {
-  EntityType,
-  type GgHost,
-  type StartedProcess,
-} from '../host.js';
+import { EntityType, GgHost, StartedProcess } from '../host.js';
+
 
 describe('createNodeHost()', () => {
   let tmp: string;
@@ -279,7 +272,7 @@ describe('createNodeHost()', () => {
       // Throwing here would cross the Wasm boundary as an opaque error;
       // gg expects the shape of a command that ran and failed.
       const result = await host.process.run(
-        'gg-js-definitely-not-installed',
+        'ggwsm-definitely-not-installed',
         [],
         options,
       );
@@ -487,7 +480,7 @@ describe('createNodeHost()', () => {
 
     test('reports a missing executable as a failed run', async () => {
       const started = await host.process.start(
-        'gg-js-definitely-not-installed',
+        'ggwsm-definitely-not-installed',
         [],
         options,
       );

@@ -4,9 +4,9 @@
 
 ### Added
 
-- The `gg` command line itself, compiled to WebAssembly. `npx @tssuite/gg-js
+- The `gg` command line itself, compiled to WebAssembly. `npx @tssuite/ggwsm
   <args>` runs it; `bin` in package.json makes the binary available to
-  npm scripts as `gg-js`.
+  npm scripts as `ggwsm`.
 - `createNodeHost()` — the file system, process, platform and console
   callbacks gg needs, implemented on `node:fs`, `node:child_process` and
   `process`. It tracks gg's working directory itself rather than moving the
