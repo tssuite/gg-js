@@ -41,7 +41,7 @@ class FakeTty extends Readable {
   }
 
   /** Nothing to pull — the test pushes keys in. */
-  _read(): void {}
+  override _read(): void {}
 
   /**
    * Feeds one key sequence in, once the reader is listening.
