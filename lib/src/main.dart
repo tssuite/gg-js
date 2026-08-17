@@ -4,7 +4,7 @@
 // Use of this source code is governed by terms that can be
 // found in the LICENSE file in the root of this package.
 
-/// The JavaScript entry point of `@tssuite/gg-js`.
+/// The JavaScript entry point of `@tssuite/ggwsm`.
 ///
 /// `dart compile wasm` runs `main()` once when the module is loaded, which
 /// publishes a single object — `globalThis.ggBridge` — for the TypeScript
@@ -56,7 +56,7 @@ class GgBridge {
   JSPromise<JSNumber> run(JSArray<JSString> args) {
     final host = GgHost.installed;
     if (host == null) {
-      throw 'gg-js: call setHost(...) before run(...).'.toJS;
+      throw 'ggwsm: call setHost(...) before run(...).'.toJS;
     }
 
     final parsed = args.toDart.map((a) => a.toDart).toList();

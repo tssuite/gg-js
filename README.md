@@ -24,12 +24,12 @@ npx ggwsm --help
 pnpm add -D ggwsm
 ```
 
-which makes `gg-js` available to your scripts:
+which makes `ggwsm` available to your scripts:
 
 ```json
 {
   "scripts": {
-    "check": "gg-js one can commit"
+    "check": "ggwsm one can commit"
   }
 }
 ```

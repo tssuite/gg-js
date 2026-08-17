@@ -4,41 +4,43 @@
 // Use of this source code is governed by terms that can be
 // found in the LICENSE file in the root of this package.
 
-import { loadBridge, type RuntimeOptions } from './runtime.js';
+import { loadBridge, RuntimeOptions } from './runtime.js';
+
+
 import type { GgHost } from './host.js';
 
 export {
-  assertWasmGcSupported,
-  checkWasmGcSupport,
-  type WasmGcSupport,
+    assertWasmGcSupported,
+    checkWasmGcSupport,
+    type WasmGcSupport
 } from './compat.js';
 
 export {
-  EntityType,
-  type ConsoleHost,
-  type DirectoryEntry,
-  type FileSystemHost,
-  type GgHost,
-  type PlatformHost,
-  type ProcessHost,
-  type ProcessOutcome,
-  type PromptHost,
-  type RunOptions,
+    EntityType,
+    type ConsoleHost,
+    type DirectoryEntry,
+    type FileSystemHost,
+    type GgHost,
+    type PlatformHost,
+    type ProcessHost,
+    type ProcessOutcome,
+    type PromptHost,
+    type RunOptions
 } from './host.js';
 
 export {
-  createNodeHost,
-  nodePlatformToDart,
-  type NodeHostOptions,
+    createNodeHost,
+    nodePlatformToDart,
+    type NodeHostOptions
 } from './host-node.js';
 
 export {
-  askOnTerminal,
-  chooseByArrows,
-  chooseByNumber,
-  createNodePrompts,
-  UnansweredPromptError,
-  type NodePromptOptions,
+    askOnTerminal,
+    chooseByArrows,
+    chooseByNumber,
+    createNodePrompts,
+    UnansweredPromptError,
+    type NodePromptOptions
 } from './prompts-node.js';
 
 // -----------------------------------------------------------------------------
@@ -114,7 +116,7 @@ class GuardedBridge implements GgBridge {
   async run(args: string[]): Promise<number> {
     if (!this.hasHost) {
       throw new Error(
-        'gg-js: call setHost(...) before run(...). Without a host gg has ' +
+        'ggwsm: call setHost(...) before run(...). Without a host gg has ' +
           'no file system, no processes and no console.',
       );
     }

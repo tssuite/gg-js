@@ -103,7 +103,7 @@ export function assertWasmGcSupported(): void {
   if (result.supported) return;
 
   const message = [
-    'gg-js requires a WebAssembly runtime with the ' +
+    'ggwsm requires a WebAssembly runtime with the ' +
       'GC proposal and the JS-string builtins, but the current environment ' +
       'does not support them.',
     '',

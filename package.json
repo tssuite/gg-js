@@ -71,11 +71,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tssuite/gg-js.git"
+    "url": "git+https://github.com/tssuite/ggwsm.git"
   },
-  "homepage": "https://github.com/tssuite/gg-js#readme",
+  "homepage": "https://github.com/tssuite/ggwsm#readme",
   "bugs": {
-    "url": "https://github.com/tssuite/gg-js/issues"
+    "url": "https://github.com/tssuite/ggwsm/issues"
   },
   "publishConfig": {
     "access": "public"
@@ -84,6 +84,6 @@
   "author": "Dr. Gabriel Gatzsche",
   "packageManager": "pnpm@11.5.3+sha512.7ac1c919341c213a34dc0d02afb7143c5c26ac26ee8c4782deea821b8ac64d2134a081fd8941dae6e29bbb48f58dfc2b7fbceeccc07cb2f09d219d342a4969ed",
   "bin": {
-    "gg-js": "./dist/gg-js.mjs"
+    "ggwsm": "./dist/ggwsm.mjs"
   }
 }

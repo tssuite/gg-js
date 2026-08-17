@@ -1,6 +1,6 @@
 # Architecture
 
-This document captures the design of `@tssuite/gg-js` — what it is, why
+This document captures the design of `@tssuite/ggwsm` — what it is, why
 each layer exists, and the trade-offs that were made. It complements
 [README.md](README.md), which is task-oriented: install, run, build.
 
@@ -9,7 +9,7 @@ each layer exists, and the trade-offs that were made. It complements
 Ship the [`gg`](https://github.com/ggsuite/gg) command line on npm, so that
 
 ```bash
-npx @tssuite/gg-js do ls repos
+npx @tssuite/ggwsm do ls repos
 ```
 
 works on a machine with Node and nothing else — no Dart SDK, no
@@ -56,12 +56,12 @@ typescript/
   runtime.ts          ← loads and instantiates the .wasm
   compat.ts           ← Wasm-GC feature probe
   index.ts            ← the public API: init(), runGg()
-  cli.ts              ← the `gg-js` executable
+  cli.ts              ← the `ggwsm` executable
   generated/          ← gitignored output of build.dart
   test/               ← vitest, in process
   e2e/                ← vitest, spawning the built binary
 
-bin/gg-js.mjs         ← the published shebang wrapper
+bin/ggwsm.mjs         ← the published shebang wrapper
 dist/                 ← gitignored npm artifact
 build.dart            ← drives `dart compile wasm`
 ```
@@ -206,7 +206,7 @@ implementation this package ships. Three decisions in it are not obvious:
 
 ## 7. The executable
 
-`bin/gg-js.mjs` is a hand-written two-line file that imports the bundled
+`bin/ggwsm.mjs` is a hand-written two-line file that imports the bundled
 `dist/cli.js`. It exists as a source file rather than a build artifact so
 the shebang survives bundling.
 
@@ -221,7 +221,7 @@ Three layers, deliberately separate:
 | Project   | What it proves                                                                                                 |
 | --------- | -------------------------------------------------------------------------------------------------------------- |
 | `node`    | the host does what `dart:io` expects, against a real temp directory; and gg runs through the bridge in process |
-| `e2e`     | `dist/gg-js.mjs` works when spawned as a process, the way npx runs it                                          |
+| `e2e`     | `dist/ggwsm.mjs` works when spawned as a process, the way npx runs it                                          |
 | `browser` | Chromium really has Wasm-GC and the JS-string builtins                                                         |
 
 The e2e tests build a throwaway gg workspace — an ocean, a ticket, a git
@@ -235,8 +235,8 @@ of a `Map` and watch it find a `pubspec.yaml` that exists nowhere on disk.
 
 ## 9. Distribution
 
-- `package.json` declares `bin: { "gg-js": "./dist/gg-js.mjs" }`, which is
-  what makes `npx @tssuite/gg-js` work.
+- `package.json` declares `bin: { "ggwsm": "./dist/ggwsm.mjs" }`, which is
+  what makes `npx @tssuite/ggwsm` work.
 - `files: ["dist", "README.md", "LICENSE"]` — the tarball carries build
   artifacts only.
 - `prepublishOnly` runs the full build and the full test suite.

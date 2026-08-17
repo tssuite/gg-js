@@ -25,6 +25,7 @@ import { emitKeypressEvents } from 'node:readline';
 import { createInterface } from 'node:readline/promises';
 import { Writable } from 'node:stream';
 
+
 import type { PromptHost } from './host.js';
 
 /**
@@ -82,7 +83,7 @@ export class UnansweredPromptError extends Error {
    * @param prompt - The question gg asked.
    */
   constructor(prompt: string) {
-    super(`gg-js: no answer for "${prompt}" — stdin ended.`);
+    super(`ggwsm: no answer for "${prompt}" — stdin ended.`);
     this.name = 'UnansweredPromptError';
   }
 }

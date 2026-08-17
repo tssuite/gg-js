@@ -4,8 +4,8 @@
 // Use of this source code is governed by terms that can be
 // found in the LICENSE file in the root of this package.
 
-// End-to-end tests: `dist/gg-js.mjs` is started as a real child process,
-// exactly the way `npx gg-js` starts it.
+// End-to-end tests: `dist/ggwsm.mjs` is started as a real child process,
+// exactly the way `npx ggwsm` starts it.
 //
 // Nothing is stubbed here. Every assertion below goes through the whole
 // stack — Node spawns the binary, the binary loads the Wasm module, the
@@ -21,9 +21,10 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
-const cli = fileURLToPath(new URL('../../dist/gg-js.mjs', import.meta.url));
 
-/** What a finished `gg-js` run left behind. */
+const cli = fileURLToPath(new URL('../../dist/ggwsm.mjs', import.meta.url));
+
+/** What a finished `ggwsm` run left behind. */
 interface CliResult {
   status: number;
   stdout: string;
@@ -33,7 +34,7 @@ interface CliResult {
 }
 
 /**
- * Runs `gg-js` as a child process and collects what it produced.
+ * Runs `ggwsm` as a child process and collects what it produced.
  * @param args - The gg command line.
  * @param cwd - The directory to run in.
  * @returns Exit code and output.
@@ -54,7 +55,7 @@ function runCli(args: string[], cwd: string): CliResult {
   return { status: result.status ?? -1, stdout, stderr, output: stdout + stderr };
 }
 
-describe('npx gg-js', () => {
+describe('npx ggwsm', () => {
   let workspace: string;
   let repo: string;
   let dartPackage: string;
@@ -69,7 +70,7 @@ describe('npx gg-js', () => {
     // A throwaway gg workspace: an ocean holding the pristine clone of one
     // repo, plus one ticket with a working copy of it. That is the smallest
     // shape gg recognises as »inside a ticket«.
-    workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'gg-js-e2e-'));
+    workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'ggwsm-e2e-'));
 
     const pubspec =
       'name: demo\nversion: 1.0.0\nenvironment:\n  sdk: ">=3.8.0 <4.0.0"\n';
@@ -247,7 +248,7 @@ describe('npx gg-js', () => {
     });
 
     test('refuses a multi-repo command outside a workspace', () => {
-      const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'gg-js-plain-'));
+      const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'ggwsm-plain-'));
       try {
         const result = runCli(['do', 'commit'], outside);
         expect(result.output).toContain('Not a workspace');
@@ -257,7 +258,7 @@ describe('npx gg-js', () => {
     });
 
     test('recognises a standalone project and points at `gg one`', () => {
-      const standalone = fs.mkdtempSync(path.join(os.tmpdir(), 'gg-js-solo-'));
+      const standalone = fs.mkdtempSync(path.join(os.tmpdir(), 'ggwsm-solo-'));
       try {
         fs.writeFileSync(path.join(standalone, 'pubspec.yaml'), 'name: solo\n');
         const result = runCli(['do', 'commit'], standalone);
@@ -322,7 +323,7 @@ describe('npx gg-js', () => {
       // command that does not exist must come back as a failed run, not as
       // an exception thrown across the Wasm boundary.
       const result = runCli(
-        ['do', 'exec', 'gg-js-no-such-executable'],
+        ['do', 'exec', 'ggwsm-no-such-executable'],
         workspace,
       );
 

@@ -15,17 +15,18 @@
 //
 // These tests need a build: run `pnpm run build` first.
 
-import { Readable } from 'node:stream';
 import * as fs from 'node:fs';
+import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, test } from 'vitest';
 
-import type * as GgJs from '../index.js';
+
+import type * as ggwsm from '../index.js';
 
 const distIndex = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
 
 describe('the built bundle', () => {
-  let gg: typeof GgJs;
+  let gg: typeof ggwsm;
 
   beforeAll(async () => {
     if (!fs.existsSync(distIndex)) {
@@ -33,7 +34,7 @@ describe('the built bundle', () => {
         `${distIndex} is missing. Run \`pnpm run build\` before the e2e tests.`,
       );
     }
-    gg = (await import(distIndex)) as typeof GgJs;
+    gg = (await import(distIndex)) as typeof ggwsm;
   });
 
   test('exports the public API', () => {
