@@ -1,5 +1,5 @@
 {
-  "name": "ggjs",
+  "name": "ggts",
   "version": "0.1.1",
   "description": "The gg command line, compiled to WebAssembly and runnable from Node via npx.",
   "keywords": [
