@@ -31,6 +31,7 @@ export {
 export {
     createNodeHost,
     nodePlatformToDart,
+    resolveExecutable,
     type NodeHostOptions
 } from './host-node.js';
 

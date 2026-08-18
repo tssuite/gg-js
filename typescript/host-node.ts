@@ -212,7 +212,11 @@ export function createNodeHost(options: NodeHostOptions = {}): GgHost {
       // Synchronous on purpose. gg awaits every process it starts, and
       // `spawnSync` keeps the ordering of gg's own output and the child's
       // output intact — with `spawn` the two interleave unpredictably.
-      const command = spawnCommand(executable, args, runOptions.runInShell);
+      const command = spawnCommand(
+        resolveExecutable(executable, env),
+        args,
+        runOptions.runInShell,
+      );
       const result = spawnSync(command.executable, command.args, {
         cwd: absolute(runOptions.workingDirectory ?? cwd),
         env: spawnEnv(runOptions),
@@ -232,9 +236,7 @@ export function createNodeHost(options: NodeHostOptions = {}): GgHost {
       }
 
       return {
-        // A child killed by a signal has no status. Shells report those
-        // as 128 + signal; gg only cares that it is not zero.
-        exitCode: result.status ?? 128,
+        exitCode: outcomeExitCode(result.status),
         /* v8 ignore start — with `encoding: 'utf8'` and piped stdio these
            are always a string, a string and a number; the fallbacks are
            there for the day one of those options changes. */
@@ -246,7 +248,11 @@ export function createNodeHost(options: NodeHostOptions = {}): GgHost {
     },
 
     async start(executable, args, runOptions): Promise<StartedProcess> {
-      const command = spawnCommand(executable, args, runOptions.runInShell);
+      const command = spawnCommand(
+        resolveExecutable(executable, env),
+        args,
+        runOptions.runInShell,
+      );
       const child = spawn(command.executable, command.args, {
         cwd: absolute(runOptions.workingDirectory ?? cwd),
         env: spawnEnv(runOptions),
@@ -331,6 +337,77 @@ export function needsShell(
   if (requested) return true;
   if (platform !== 'win32') return false;
   return /\.(bat|cmd)$/i.test(executable);
+}
+
+/**
+ * The exit code gg should see for a child that has finished.
+ *
+ * A child killed by a signal has no status of its own. Shells report those
+ * as 128 + signal, and gg only cares that the number is not zero. Windows
+ * has no signals to be killed by — Node ends a process there with
+ * `TerminateProcess`, which leaves a real status behind — so the missing
+ * case is reachable on POSIX only, and lives here to stay testable from
+ * both.
+ * @param status - What the spawn reported, or `null` for a killed child.
+ * @returns The exit code to hand gg.
+ */
+export function outcomeExitCode(status: number | null): number {
+  return status ?? 128;
+}
+
+/**
+ * Finds the file Windows would run for a bare command name.
+ *
+ * Node resolves an extensionless name against `.com` and `.exe` only — the
+ * two `CreateProcessW` itself tries. A Windows shell keeps going through
+ * `PATHEXT`, and that is how most of gg's toolchain is reached there: what
+ * sits on `PATH` is `dart.bat`, `flutter.bat`, `npm.cmd`, `pnpm.cmd`. gg
+ * names those without an extension, so without this lookup they spawn as
+ * `ENOENT` and gg reports a missing SDK that is installed.
+ *
+ * Only a `.bat` or `.cmd` hit is reported back, as a full path: those are
+ * the ones Node cannot spawn by itself, and naming the extension is what
+ * lets {@link needsShell} route them through `cmd.exe`. Anything Node can
+ * already find is left to Node, so a resolved `.exe` changes nothing.
+ * @param executable - The program gg wants to run.
+ * @param env - Where to read `PATH` and `PATHEXT` from. Defaults to this
+ *   process' environment.
+ * @param platform - The platform to resolve for. Defaults to this one.
+ * @returns The path to run, or [executable] unchanged.
+ */
+export function resolveExecutable(
+  executable: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: string = process.platform,
+): string {
+  if (platform !== 'win32') return executable;
+
+  // An explicit extension is already unambiguous, and a name carrying a
+  // directory is not a `PATH` lookup at all.
+  if (
+    path.extname(executable) !== '' ||
+    executable.includes('/') ||
+    executable.includes('\\')
+  ) {
+    return executable;
+  }
+
+  const dirs = (env.PATH ?? env.Path ?? '').split(';').filter(Boolean);
+  const extensions = (env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD')
+    .split(';')
+    .filter(Boolean);
+
+  // Directory by directory, extensions in `PATHEXT` order within each —
+  // the order Windows resolves in, so the same file wins here.
+  for (const dir of dirs) {
+    for (const extension of extensions) {
+      const candidate = path.join(dir, executable + extension);
+      if (!fs.existsSync(candidate)) continue;
+      return /\.(bat|cmd)$/i.test(extension) ? candidate : executable;
+    }
+  }
+
+  return executable;
 }
 
 /**
