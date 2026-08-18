@@ -13,13 +13,38 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
-    createNodeHost, needsShell, nodePlatformToDart, readLineFrom, spawnCommand
+    createNodeHost, needsShell, nodePlatformToDart, outcomeExitCode,
+    readLineFrom, resolveExecutable, spawnCommand
 } from '../host-node.js';
 import { EntityType, GgHost, StartedProcess } from '../host.js';
 
+
+/**
+ * Whether this machine lets an unprivileged process create a symbolic link.
+ *
+ * Windows refuses one unless the process is elevated or Developer Mode is
+ * on, and `dart:io` hits exactly the same wall: its `CreateSymbolicLinkW`
+ * call passes `SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE`, and Developer
+ * Mode is what makes that flag work. So a refusal here is the machine's
+ * answer rather than a bug in the host, and the cases that need a link say
+ * so instead of failing. Junctions would work unprivileged, but `dart:io`
+ * does not create those, so neither does the host.
+ */
+const symlinksAllowed = ((): boolean => {
+  const probe = fs.mkdtempSync(path.join(os.tmpdir(), 'gg-symlink-probe-'));
+  try {
+    fs.writeFileSync(path.join(probe, 'target'), '');
+    fs.symlinkSync(path.join(probe, 'target'), path.join(probe, 'link'));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    fs.rmSync(probe, { recursive: true, force: true });
+  }
+})();
 
 describe('createNodeHost()', () => {
   let tmp: string;
@@ -31,28 +56,29 @@ describe('createNodeHost()', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    // Windows keeps a directory locked while a process still sits in it,
+    // and a child that just wrote its last file may need another moment to
+    // actually exit. Retrying rides out that gap instead of failing the
+    // next test's cleanup.
+    fs.rmSync(tmp, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
   });
 
   // ###########################################################################
   describe('fs', () => {
-    test('answers typeOf for files, directories, links and gaps', () => {
+    test('answers typeOf for files, directories and gaps', () => {
       fs.writeFileSync(path.join(tmp, 'file.txt'), 'x');
       fs.mkdirSync(path.join(tmp, 'dir'));
-      fs.symlinkSync(path.join(tmp, 'file.txt'), path.join(tmp, 'link.txt'));
 
       expect(host.fs.typeOf(path.join(tmp, 'file.txt'), true)).toBe(
         EntityType.File,
       );
       expect(host.fs.typeOf(path.join(tmp, 'dir'), true)).toBe(
         EntityType.Directory,
-      );
-      expect(host.fs.typeOf(path.join(tmp, 'link.txt'), false)).toBe(
-        EntityType.Link,
-      );
-      // Followed, the link is the file it points at.
-      expect(host.fs.typeOf(path.join(tmp, 'link.txt'), true)).toBe(
-        EntityType.File,
       );
       expect(host.fs.typeOf(path.join(tmp, 'nope'), true)).toBe(
         EntityType.NotFound,
@@ -95,15 +121,10 @@ describe('createNodeHost()', () => {
       );
     });
 
-    test('deletes files, links and directories', () => {
+    test('deletes files and directories', () => {
       fs.writeFileSync(path.join(tmp, 'gone.txt'), 'x');
       host.fs.deleteEntity(path.join(tmp, 'gone.txt'), false);
       expect(fs.existsSync(path.join(tmp, 'gone.txt'))).toBe(false);
-
-      fs.writeFileSync(path.join(tmp, 'target.txt'), 'x');
-      fs.symlinkSync(path.join(tmp, 'target.txt'), path.join(tmp, 'l'));
-      host.fs.deleteEntity(path.join(tmp, 'l'), false);
-      expect(fs.existsSync(path.join(tmp, 'target.txt'))).toBe(true);
 
       fs.mkdirSync(path.join(tmp, 'tree/sub'), { recursive: true });
       fs.writeFileSync(path.join(tmp, 'tree/sub/f.txt'), 'x');
@@ -115,22 +136,14 @@ describe('createNodeHost()', () => {
       fs.mkdirSync(path.join(tmp, 'list/sub'), { recursive: true });
       fs.writeFileSync(path.join(tmp, 'list/top.txt'), 'x');
       fs.writeFileSync(path.join(tmp, 'list/sub/deep.txt'), 'x');
-      fs.symlinkSync(
-        path.join(tmp, 'list/top.txt'),
-        path.join(tmp, 'list/link.txt'),
-      );
 
       const flat = host.fs.listDirectory(path.join(tmp, 'list'), false);
       expect(flat.map((e) => path.basename(e.path)).sort()).toEqual([
-        'link.txt',
         'sub',
         'top.txt',
       ]);
       expect(flat.find((e) => e.path.endsWith('sub'))?.type).toBe(
         EntityType.Directory,
-      );
-      expect(flat.find((e) => e.path.endsWith('link.txt'))?.type).toBe(
-        EntityType.Link,
       );
       expect(flat.find((e) => e.path.endsWith('top.txt'))?.type).toBe(
         EntityType.File,
@@ -170,16 +183,117 @@ describe('createNodeHost()', () => {
       expect(host.fs.systemTempDirectory()).toBe(os.tmpdir());
     });
 
-    test('creates, reads and resolves symbolic links', () => {
-      fs.writeFileSync(path.join(tmp, 'real.txt'), 'x');
-      host.fs.createLink(path.join(tmp, 'sym'), path.join(tmp, 'real.txt'));
+    // Every case that needs a link of its own. See `symlinksAllowed`: a
+    // Windows machine without Developer Mode cannot create one, and native
+    // gg could not either, so these report as skipped rather than failed.
+    describe.skipIf(!symlinksAllowed)('symbolic links', () => {
+      test('answers typeOf for a link and for what it points at', () => {
+        fs.writeFileSync(path.join(tmp, 'file.txt'), 'x');
+        fs.symlinkSync(path.join(tmp, 'file.txt'), path.join(tmp, 'link.txt'));
 
-      expect(host.fs.linkTarget(path.join(tmp, 'sym'))).toBe(
-        path.join(tmp, 'real.txt'),
-      );
-      expect(host.fs.resolveSymbolicLinks(path.join(tmp, 'sym'))).toBe(
-        path.join(tmp, 'real.txt'),
-      );
+        expect(host.fs.typeOf(path.join(tmp, 'link.txt'), false)).toBe(
+          EntityType.Link,
+        );
+        // Followed, the link is the file it points at.
+        expect(host.fs.typeOf(path.join(tmp, 'link.txt'), true)).toBe(
+          EntityType.File,
+        );
+      });
+
+      test('deletes a link and leaves its target alone', () => {
+        fs.writeFileSync(path.join(tmp, 'target.txt'), 'x');
+        fs.symlinkSync(path.join(tmp, 'target.txt'), path.join(tmp, 'l'));
+
+        host.fs.deleteEntity(path.join(tmp, 'l'), false);
+
+        expect(fs.existsSync(path.join(tmp, 'l'))).toBe(false);
+        expect(fs.existsSync(path.join(tmp, 'target.txt'))).toBe(true);
+      });
+
+      test('lists a link as a link', () => {
+        fs.mkdirSync(path.join(tmp, 'list'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'list/top.txt'), 'x');
+        fs.symlinkSync(
+          path.join(tmp, 'list/top.txt'),
+          path.join(tmp, 'list/link.txt'),
+        );
+
+        const flat = host.fs.listDirectory(path.join(tmp, 'list'), false);
+
+        expect(flat.find((e) => e.path.endsWith('link.txt'))?.type).toBe(
+          EntityType.Link,
+        );
+      });
+
+      test('creates, reads and resolves symbolic links', () => {
+        fs.writeFileSync(path.join(tmp, 'real.txt'), 'x');
+        host.fs.createLink(path.join(tmp, 'sym'), path.join(tmp, 'real.txt'));
+
+        expect(host.fs.linkTarget(path.join(tmp, 'sym'))).toBe(
+          path.join(tmp, 'real.txt'),
+        );
+        expect(host.fs.resolveSymbolicLinks(path.join(tmp, 'sym'))).toBe(
+          path.join(tmp, 'real.txt'),
+        );
+      });
+    });
+
+    // The mirror image of the block above. The same three callbacks still
+    // have to behave on a machine that refuses symbolic links, and between
+    // the two blocks every one of them is exercised wherever the suite
+    // runs.
+    describe.skipIf(symlinksAllowed)('where links are not permitted', () => {
+      test('resolves a path that involves no link at all', () => {
+        fs.writeFileSync(path.join(tmp, 'plain.txt'), 'x');
+
+        expect(host.fs.resolveSymbolicLinks(path.join(tmp, 'plain.txt'))).toBe(
+          path.join(tmp, 'plain.txt'),
+        );
+      });
+
+      test('hands the refusal to gg rather than swallowing it', () => {
+        // A swallowed error would leave gg believing it made a link.
+        fs.writeFileSync(path.join(tmp, 'real.txt'), 'x');
+
+        expect(() =>
+          host.fs.createLink(path.join(tmp, 'sym'), path.join(tmp, 'real.txt')),
+        ).toThrow(/EPERM|EACCES/);
+      });
+
+      // A junction is the one reparse point Windows makes without a
+      // privilege. It is not what `dart:io` creates, so the host never
+      // makes one, but it reads back as a link and that is enough to put
+      // the link-reading half of the host through its paces here.
+      test('reads a junction like any other link', () => {
+        fs.mkdirSync(path.join(tmp, 'dir'));
+        fs.symlinkSync(path.join(tmp, 'dir'), path.join(tmp, 'j'), 'junction');
+
+        expect(host.fs.linkTarget(path.join(tmp, 'j'))).toBe(
+          path.join(tmp, 'dir'),
+        );
+        expect(host.fs.typeOf(path.join(tmp, 'j'), false)).toBe(
+          EntityType.Link,
+        );
+        // Followed, the junction is the directory it points at.
+        expect(host.fs.typeOf(path.join(tmp, 'j'), true)).toBe(
+          EntityType.Directory,
+        );
+      });
+
+      test('lists a junction as a link', () => {
+        fs.mkdirSync(path.join(tmp, 'list', 'dir'), { recursive: true });
+        fs.symlinkSync(
+          path.join(tmp, 'list', 'dir'),
+          path.join(tmp, 'list', 'j'),
+          'junction',
+        );
+
+        const flat = host.fs.listDirectory(path.join(tmp, 'list'), false);
+
+        expect(flat.find((e) => e.path.endsWith('j'))?.type).toBe(
+          EntityType.Link,
+        );
+      });
     });
 
     test('lets a read of a missing file fail', () => {
@@ -216,9 +330,16 @@ describe('createNodeHost()', () => {
         options,
       );
 
-      // No exit status exists for a killed process; gg must still see a
-      // failure rather than a silent success.
-      expect(result.exitCode).toBe(128);
+      // No exit status exists for a killed process on POSIX; the shells
+      // gg cares about report those as 128 + signal. Windows has no real
+      // signals — Node emulates SIGKILL with `TerminateProcess(handle, 1)`
+      // — so status is never null there and only »not zero« is the actual
+      // contract (see the `run()` implementation).
+      if (process.platform === 'win32') {
+        expect(result.exitCode).not.toBe(0);
+      } else {
+        expect(result.exitCode).toBe(128);
+      }
     });
 
     test('reports a non-zero exit code', async () => {
@@ -294,16 +415,26 @@ describe('createNodeHost()', () => {
     });
 
     test('takes the executable as a name, not as a command line', async () => {
-      // `dart:io` quotes the executable like any other word, so a shell
-      // run is not a place to smuggle in a command line. Measured against
-      // a native `Process.run('echo hello', [], runInShell: true)`, which
-      // reports the same 127.
       const result = await host.process.run('echo hello-shell', [], {
         ...options,
         runInShell: true,
       });
 
-      expect(result.exitCode).toBe(127);
+      if (process.platform === 'win32') {
+        // `cmd.exe /c` re-parses its argument as a command line rather
+        // than accepting it as one opaque word the way a POSIX shell's
+        // single quotes do, so it runs `echo` with `hello-shell` as its
+        // argument. `Process.run('echo hello-shell', [], runInShell:
+        // true)` behaves the same way natively on Windows.
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('hello-shell');
+      } else {
+        // `dart:io` quotes the executable like any other word, so a shell
+        // run is not a place to smuggle in a command line. Measured
+        // against a native `Process.run('echo hello', [], runInShell:
+        // true)`, which reports the same 127.
+        expect(result.exitCode).toBe(127);
+      }
     });
 
     test('keeps an argument with spaces and semicolons whole', async () => {
@@ -344,6 +475,14 @@ describe('createNodeHost()', () => {
       expect(exited).toBe(0);
       expect(() => started.writeStdin('ignored')).not.toThrow();
       expect(() => started.closeStdin()).not.toThrow();
+
+      // »Fire and forget« still means the child runs, so wait for the
+      // proof. Waiting is also what keeps the cleanup working: the child
+      // has `tmp` as its working directory, and Windows keeps a directory
+      // locked for as long as a process sits in it.
+      await vi.waitFor(() => expect(fs.existsSync(marker)).toBe(true), {
+        timeout: 30_000,
+      });
     });
   });
 
@@ -519,6 +658,127 @@ describe('createNodeHost()', () => {
 
     test('decides for this platform by default', () => {
       expect(needsShell('pana.bat', false)).toBe(process.platform === 'win32');
+    });
+  });
+
+  // ###########################################################################
+  describe('outcomeExitCode()', () => {
+    test('passes a real status through', () => {
+      expect(outcomeExitCode(0)).toBe(0);
+      expect(outcomeExitCode(3)).toBe(3);
+    });
+
+    test('turns a killed child into a failure', () => {
+      // No status means a signal ended it, and gg must not read that as a
+      // silent success.
+      expect(outcomeExitCode(null)).toBe(128);
+    });
+  });
+
+  // ###########################################################################
+  describe('resolveExecutable()', () => {
+    // Real files, because the lookup is a `PATH` walk. The names are the
+    // ones that actually bite on Windows: the Dart SDK and pnpm are
+    // reached through wrappers there.
+    let bin: string;
+    let env: NodeJS.ProcessEnv;
+
+    beforeEach(() => {
+      bin = path.join(tmp, 'bin');
+      fs.mkdirSync(bin, { recursive: true });
+      env = { PATH: bin, PATHEXT: '.COM;.EXE;.BAT;.CMD' };
+    });
+
+    test('leaves everything alone off Windows', () => {
+      fs.writeFileSync(path.join(bin, 'dart.BAT'), '');
+
+      expect(resolveExecutable('dart', env, 'linux')).toBe('dart');
+    });
+
+    test('names the .bat a bare command resolves to', () => {
+      fs.writeFileSync(path.join(bin, 'dart.BAT'), '');
+
+      expect(resolveExecutable('dart', env, 'win32')).toBe(
+        path.join(bin, 'dart.BAT'),
+      );
+    });
+
+    test('names a .cmd wrapper too', () => {
+      fs.writeFileSync(path.join(bin, 'pnpm.CMD'), '');
+
+      expect(resolveExecutable('pnpm', env, 'win32')).toBe(
+        path.join(bin, 'pnpm.CMD'),
+      );
+    });
+
+    test('leaves an executable Node can find to Node', () => {
+      // Node resolves .com and .exe by itself, so renaming those would
+      // only make the command line longer.
+      fs.writeFileSync(path.join(bin, 'git.EXE'), '');
+
+      expect(resolveExecutable('git', env, 'win32')).toBe('git');
+    });
+
+    test('prefers the .exe when both are on the way', () => {
+      // PATHEXT order decides, the way it does in a Windows shell.
+      fs.writeFileSync(path.join(bin, 'dart.EXE'), '');
+      fs.writeFileSync(path.join(bin, 'dart.BAT'), '');
+
+      expect(resolveExecutable('dart', env, 'win32')).toBe('dart');
+    });
+
+    test('takes the first directory on PATH that has a hit', () => {
+      const first = path.join(tmp, 'first');
+      fs.mkdirSync(first, { recursive: true });
+      fs.writeFileSync(path.join(bin, 'dart.BAT'), '');
+
+      expect(
+        resolveExecutable('dart', { ...env, PATH: `${first};${bin}` }, 'win32'),
+      ).toBe(path.join(bin, 'dart.BAT'));
+    });
+
+    test('leaves a name that already carries an extension', () => {
+      // `needsShell` handles those; a lookup would only second-guess gg.
+      expect(resolveExecutable('pana.bat', env, 'win32')).toBe('pana.bat');
+    });
+
+    test('leaves a name that carries a directory', () => {
+      expect(resolveExecutable('C:\\tools\\dart', env, 'win32')).toBe(
+        'C:\\tools\\dart',
+      );
+      expect(resolveExecutable('tools/dart', env, 'win32')).toBe('tools/dart');
+    });
+
+    test('leaves a command it cannot find anywhere', () => {
+      // Unchanged, so the spawn fails as the missing command it is rather
+      // than as something this function invented.
+      expect(resolveExecutable('ggwsm-nothing-here', env, 'win32')).toBe(
+        'ggwsm-nothing-here',
+      );
+    });
+
+    test('reads Path when that is how PATH is spelled', () => {
+      fs.writeFileSync(path.join(bin, 'dart.BAT'), '');
+
+      expect(
+        resolveExecutable('dart', { Path: bin, PATHEXT: '.BAT' }, 'win32'),
+      ).toBe(path.join(bin, 'dart.BAT'));
+    });
+
+    test('copes with no PATH and no PATHEXT at all', () => {
+      expect(resolveExecutable('dart', {}, 'win32')).toBe('dart');
+
+      // Without PATHEXT the built-in list still finds the wrapper.
+      fs.writeFileSync(path.join(bin, 'dart.BAT'), '');
+      expect(resolveExecutable('dart', { PATH: bin }, 'win32')).toBe(
+        path.join(bin, 'dart.BAT'),
+      );
+    });
+
+    test('resolves for this platform by default', () => {
+      expect(resolveExecutable('ggwsm-nothing-here')).toBe(
+        'ggwsm-nothing-here',
+      );
     });
   });
 

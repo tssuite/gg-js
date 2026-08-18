@@ -15,7 +15,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
-import { createNodeHost } from '../host-node.js';
+import { createNodeHost, nodePlatformToDart } from '../host-node.js';
 import { _resetForTests, init, runGg, type GgBridge } from '../index.js';
 
 describe('the gg bridge', () => {
@@ -108,8 +108,18 @@ describe('the gg bridge', () => {
   test('runs gg against a host that is not the file system at all', async () => {
     // The point of the host contract: gg does not know where its files
     // come from. Here they come from a map.
-    const files = new Map<string, string>([['/memory/pubspec.yaml', 'name: m']]);
-    const dirs = new Set<string>(['/', '/memory']);
+    //
+    // The keys are built with `path` rather than written as posix strings:
+    // `package:path` picks its separator from `Uri.base` once, before any
+    // host exists, so inside gg these paths are spelled the way the
+    // platform spells them — `\memory\pubspec.yaml` on Windows. A host is
+    // free to invent a file system, but not a path style.
+    const root = path.sep;
+    const memory = path.join(root, 'memory');
+    const files = new Map<string, string>([
+      [path.join(memory, 'pubspec.yaml'), 'name: m'],
+    ]);
+    const dirs = new Set<string>([root, memory]);
     const printed: string[] = [];
 
     bridge.setHost({
@@ -133,10 +143,10 @@ describe('the gg bridge', () => {
         listDirectory: () => [],
         rename: () => {},
         copyFile: () => {},
-        currentDirectory: () => '/memory',
+        currentDirectory: () => memory,
         setCurrentDirectory: () => {},
-        systemTempDirectory: () => '/tmp',
-        createTempDirectory: () => '/tmp/x',
+        systemTempDirectory: () => path.join(root, 'tmp'),
+        createTempDirectory: () => path.join(root, 'tmp', 'x'),
         resolveSymbolicLinks: (p) => p,
         createLink: () => {},
         linkTarget: () => '',
@@ -155,8 +165,8 @@ describe('the gg bridge', () => {
       },
       platform: {
         environmentEntries: () => [],
-        operatingSystem: () => 'linux',
-        pathSeparator: () => '/',
+        operatingSystem: () => nodePlatformToDart(process.platform),
+        pathSeparator: () => path.sep,
         setExitCode: () => {},
         exitCode: () => 0,
       },
@@ -172,7 +182,7 @@ describe('the gg bridge', () => {
 
     await bridge.run(['do', 'commit']);
 
-    // `/memory/pubspec.yaml` exists only in the map above, and gg found it.
+    // The pubspec exists only in the map above, and gg found it.
     expect(printed.join('')).toContain('standalone project');
   });
 

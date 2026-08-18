@@ -21,8 +21,33 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
+import { spawnCommand } from '../host-node.js';
 
 const cli = fileURLToPath(new URL('../../dist/ggwsm.mjs', import.meta.url));
+
+/**
+ * Runs the `dart` on PATH.
+ *
+ * Through a shell, because on Windows `dart` is a batch file — the Flutter
+ * SDK ships `bin/dart.bat` — and Node refuses to spawn one directly since
+ * CVE-2024-27980, with an `ENOENT` that looks like a missing SDK.
+ * `spawnCommand` already builds the shell invocation for both platforms,
+ * quoting included, so the fixtures borrow it instead of repeating it.
+ * @param args - The dart command line.
+ * @param cwd - The directory to run in.
+ * @returns What `spawnSync` returned.
+ */
+function runDart(
+  args: string[],
+  cwd: string,
+): ReturnType<typeof spawnSync<string>> {
+  const command = spawnCommand('dart', args, true);
+  return spawnSync(command.executable, command.args, {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  });
+}
 
 /** What a finished `ggwsm` run left behind. */
 interface CliResult {
@@ -177,7 +202,7 @@ describe('npx ggwsm', () => {
     git('add', '.');
     git('commit', '-m', 'initial');
 
-    const pub = spawnSync('dart', ['pub', 'get'], { cwd: dir, encoding: 'utf8' });
+    const pub = runDart(['pub', 'get'], dir);
     if (pub.status !== 0) throw new Error(`dart pub get: ${pub.stderr}`);
 
     return dir;
@@ -304,10 +329,7 @@ describe('npx ggwsm', () => {
       // `dart test`'s output line by line; a host that hands the whole run
       // over at once makes it read a passing suite as a failure. This
       // asserts the two agree.
-      const direct = spawnSync('dart', ['test'], {
-        cwd: dartPackage,
-        encoding: 'utf8',
-      });
+      const direct = runDart(['test'], dartPackage);
       expect(direct.status).toBe(0);
 
       fs.rmSync(path.join(dartPackage, '.gg', 'gg.json'), { force: true });
