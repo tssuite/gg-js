@@ -1,6 +1,6 @@
 # Runs the gg-js quick check on every push and pull request against main.
 
-name: Tests
+name: Quick Check
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    name: Quick check
+    name: Quick Check
     runs-on: ubuntu-latest
 
     strategy:
