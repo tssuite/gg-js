@@ -1,9 +1,7 @@
-name: Tests
+name: Full Check
 
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
 
 jobs:
