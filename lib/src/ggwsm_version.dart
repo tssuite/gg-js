@@ -9,4 +9,4 @@
 // coverage:ignore-file
 
 /// The version of the `ggwsm` package.
-const String ggwsmVersion = '0.0.1';
+const String ggwsmVersion = '0.0.2';
