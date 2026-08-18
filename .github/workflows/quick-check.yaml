@@ -28,4 +28,4 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
-      - run: npx --yes ggwsm one did commit
+      - run: pnpx ggwsm one did commit
