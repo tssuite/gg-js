@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.4 - 2026-08-20
+
+### Fixed
+
+- `ggwsm dna add` and `ggwsm dna build` crashed. The DNA engine reached
+  for `Isolate.resolvePackageUri` and `Process.runSync`, neither of which
+  a WebAssembly build has. Picks up helix 1.1.0, which routes both
+  through the host. The whole quickstart now runs under `ggwsm`.
+
 ## 0.0.3 - 2026-08-20
 
 ### Added
