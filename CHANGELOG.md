@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.3 - 2026-08-20
 
 ### Added
 
@@ -53,3 +53,4 @@
 - Update dart dependencies
 - Update dart and typescript dependencies
 - Update to latest dependencies
+- Bump `gg` to 17.2.2
